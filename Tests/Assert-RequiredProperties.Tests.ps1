@@ -48,6 +48,38 @@ Describe 'Assert-RequiredProperties' {
         }
     }
 
+    Context 'when a required property is an array' {
+
+        It 'does not throw when a required array property is non-empty' {
+            $obj = New-TestObject @{ items = @('a', 'b') }
+            { Assert-RequiredProperties -Object $obj `
+                -Properties @('items') `
+                -Context 'VM' } | Should -Not -Throw
+        }
+
+        It 'does not throw when the array contains PSCustomObjects (real ConvertFrom-Json output)' {
+            $obj = New-TestObject @{
+                users = @(
+                    [PSCustomObject]@{ username = 'u-deploy'; shell = '/bin/bash' }
+                )
+            }
+            { Assert-RequiredProperties -Object $obj `
+                -Properties @('users') `
+                -Context 'VM' } | Should -Not -Throw
+        }
+
+        It 'throws on an empty array' {
+            # [string](@()) = "" so the old IsNullOrWhiteSpace approach would
+            # also catch this, but for the wrong reason. Count-based detection
+            # is explicit and handles all collection types uniformly.
+            $obj = New-TestObject @{ items = @() }
+            { Assert-RequiredProperties -Object $obj `
+                -Properties @('items') `
+                -Context 'VM' } |
+                Should -Throw -ExpectedMessage "*empty required property 'items'*"
+        }
+    }
+
     Context 'when a required property is empty or whitespace' {
 
         It 'throws on an empty string' {

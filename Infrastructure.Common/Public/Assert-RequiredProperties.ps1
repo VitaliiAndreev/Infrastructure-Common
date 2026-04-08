@@ -50,9 +50,21 @@ function Assert-RequiredProperties {
             continue
         }
 
-        # Cast to [string] before IsNullOrWhiteSpace: numeric properties
-        # (e.g. cpuCount) are [int] in PS 5.1 and the method requires [string].
-        if ([string]::IsNullOrWhiteSpace([string]($Object.$property))) {
+        # Scalars (strings, numbers): IsNullOrWhiteSpace after a [string] cast.
+        # Arrays: count, because asking "does this collection have elements?"
+        # is more direct than relying on [string](@()) = "" as a side-effect.
+        # String is excluded from the array branch despite implementing
+        # IEnumerable<char> so that "" still goes through IsNullOrWhiteSpace.
+        $value   = $Object.$property
+        $isEmpty = if ($value -is [System.Collections.IEnumerable] -and
+                       $value -isnot [string]) {
+            @($value).Count -eq 0
+        } else {
+            # Numeric properties (e.g. cpuCount) are [int] in PS 5.1;
+            # cast to [string] so IsNullOrWhiteSpace receives the right type.
+            [string]::IsNullOrWhiteSpace([string]$value)
+        }
+        if ($isEmpty) {
             $errors.Add("$Context has empty required property '$property'.")
         }
     }
