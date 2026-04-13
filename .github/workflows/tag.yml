@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-powershell.yml
 
   tag:
     needs: test
