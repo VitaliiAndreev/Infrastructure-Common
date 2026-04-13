@@ -1,0 +1,26 @@
+name: Tag from manifest version
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      # Only fire when the manifest itself changes, not on every push.
+      - 'Infrastructure.Common/Infrastructure.Common.psd1'
+
+jobs:
+  tag:
+    runs-on: windows-latest
+    permissions:
+      # Required to create and push the tag.
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history is required so `git tag -l` can see all existing
+          # tags and avoid creating duplicates.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/tag-from-manifest
+        with:
+          psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'

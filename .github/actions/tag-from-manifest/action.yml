@@ -1,0 +1,27 @@
+name: Tag from manifest version
+description: >
+  Creates and pushes a git tag matching the ModuleVersion in the .psd1
+  manifest. If the tag already exists the step is skipped. Requires the
+  calling workflow to have 'permissions: contents: write' and to check
+  out with 'fetch-depth: 0' so all existing tags are visible.
+
+inputs:
+  psd1:
+    description: >
+      Relative path to the .psd1 manifest inside the caller's repository
+      (e.g. 'Infrastructure.Common\Infrastructure.Common.psd1').
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Tag from manifest version
+      shell: pwsh
+      # ${{ github.action_path }} is substituted by the runner before PowerShell
+      # runs - it becomes the literal path where the runner downloaded this
+      # action's source files (a separate clone of Infrastructure-Common).
+      # The caller's working directory is unaffected, so the script does not
+      # need to exist in the caller's repository.
+      run: |
+        & "${{ github.action_path }}\New-VersionTag.ps1" `
+            -Psd1 '${{ inputs.psd1 }}'
