@@ -23,5 +23,5 @@ runs:
       # The caller's working directory is unaffected, so the script does not
       # need to exist in the caller's repository.
       run: |
-        & "${{ github.action_path }}\New-VersionTag.ps1" `
-            -Psd1 '${{ inputs.psd1 }}'
+        . "${{ github.action_path }}\Invoke-TagFromManifest.ps1"
+        Invoke-TagFromManifest -Psd1 '${{ inputs.psd1 }}'
