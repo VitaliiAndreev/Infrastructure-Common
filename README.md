@@ -35,7 +35,7 @@ flow through `Invoke-ModuleInstall`.
 # Inline bootstrap - cannot use Invoke-ModuleInstall to install itself.
 $_common = Get-Module -ListAvailable -Name Infrastructure.Common |
     Sort-Object Version -Descending | Select-Object -First 1
-if (-not $_common -or $_common.Version -lt [Version]'1.0.0') {
+if (-not $_common -or $_common.Version -lt [Version]'1.0.3') {
     Install-Module Infrastructure.Common -Scope CurrentUser -Force
 }
 Import-Module Infrastructure.Common -Force -ErrorAction Stop
@@ -67,20 +67,17 @@ source instead of PSGallery.
 
 ## Publishing
 
-Publishing is automated via GitHub Actions — pushing a version tag triggers
-the workflow, which calls `Publish.ps1` using a repository secret.
+Publishing is fully automated via GitHub Actions.
 
 **To ship a new version:**
 
 1. Bump `ModuleVersion` in [Infrastructure.Common/Infrastructure.Common.psd1](Infrastructure.Common/Infrastructure.Common.psd1)
-2. Commit and push, then tag:
-   ```powershell
-   git tag 1.0.1
-   git push origin 1.0.1
-   ```
+2. Open a PR, get it reviewed and merged
 
-The tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml),
-which runs CI and then publishes to PSGallery automatically.
+On merge, [.github/workflows/tag.yml](.github/workflows/tag.yml) runs CI,
+creates a matching git tag, then calls
+[.github/workflows/publish.yml](.github/workflows/publish.yml) to publish
+to PSGallery. No manual tagging step required.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
 `PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.
@@ -142,9 +139,19 @@ Infrastructure-Common/
 |  `- Infrastructure.Common.psd1   # Module manifest (version, GUID, exports)
 |- Tests/
 |  |- Assert-RequiredProperties.Tests.ps1
-|  `- Invoke-ModuleInstall.Tests.ps1
+|  |- Invoke-ModuleInstall.Tests.ps1
+|  `- Invoke-TagFromManifest.Tests.ps1
+|- .github/
+|  |- actions/
+|  |  `- tag-from-manifest/
+|  |     |- action.yml                  # Composite action - reusable by other repos
+|  |     `- Invoke-TagFromManifest.ps1  # Creates git tag from manifest version
+|  `- workflows/
+|     |- ci-powershell.yml   # Shared CI workflow - reusable by other repos
+|     |- tag.yml             # Fires on manifest change - runs CI then tags and publishes
+|     `- publish.yml         # Reusable publish workflow - called by tag.yml
 |- Install.ps1      # Installs from source for local development
-|- Publish.ps1      # Publishes to PSGallery (called by CI)
-|- Run-Tests.ps1    # Runs Pester tests (called by CI)
+|- Publish.ps1      # Publishes to PSGallery (called by publish.yml)
+|- Run-Tests.ps1    # Runs Pester tests (called by ci-powershell.yml)
 `- README.md
 ```
