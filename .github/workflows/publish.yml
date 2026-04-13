@@ -1,16 +1,14 @@
 name: Publish to PSGallery
 
+# Reusable workflow - called from tag.yml after the tag is created.
 on:
-  push:
-    tags:
-      - '[0-9]*'
+  workflow_call:
+    secrets:
+      PSGALLERY_API_KEY:
+        required: true
 
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
-
   publish:
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5

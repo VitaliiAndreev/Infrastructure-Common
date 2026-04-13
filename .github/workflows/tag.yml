@@ -28,3 +28,9 @@ jobs:
       - uses: ./.github/actions/tag-from-manifest
         with:
           psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
+
+  publish:
+    needs: tag
+    uses: ./.github/workflows/publish.yml
+    secrets:
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
