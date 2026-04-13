@@ -9,7 +9,11 @@ on:
       - 'Infrastructure.Common/Infrastructure.Common.psd1'
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
   tag:
+    needs: test
     runs-on: windows-latest
     permissions:
       # Required to create and push the tag.

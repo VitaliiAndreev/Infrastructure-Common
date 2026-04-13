@@ -3,6 +3,10 @@ name: CI
 on:
   push:
     branches: [ main, master ]
+    paths-ignore:
+      # Manifest-only pushes are handled by tag.yml, which includes CI.
+      # Excluding here avoids running CI twice on the same commit.
+      - 'Infrastructure.Common/Infrastructure.Common.psd1'
   pull_request:
     branches: [ main, master ]
   workflow_call:
