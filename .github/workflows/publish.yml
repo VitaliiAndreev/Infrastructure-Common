@@ -8,7 +8,7 @@ on:
         required: true
 
 jobs:
-  publish:
+  run:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
