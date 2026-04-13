@@ -137,10 +137,7 @@ Infrastructure-Common/
 |  |  `- Invoke-ModuleInstall.ps1
 |  |- Infrastructure.Common.psm1   # Dot-sources Public\ and exports functions
 |  `- Infrastructure.Common.psd1   # Module manifest (version, GUID, exports)
-|- Tests/
-|  |- Assert-RequiredProperties.Tests.ps1
-|  |- Invoke-ModuleInstall.Tests.ps1
-|  `- Invoke-TagFromManifest.Tests.ps1
+|- Tests/               # Pester unit tests
 |- .github/
 |  |- actions/
 |  |  `- tag-from-manifest/
