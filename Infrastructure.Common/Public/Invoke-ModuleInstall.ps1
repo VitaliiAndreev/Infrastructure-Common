@@ -13,6 +13,9 @@ function Invoke-ModuleInstall {
         still needs a short inline guard to install Infrastructure.Common
         before this function is available - but that is a one-time cost
         per script, and all other module installs flow through this function.
+        That inline guard is also responsible for ensuring the NuGet package
+        provider is present, since by the time this function runs NuGet is
+        already available.
 
     .PARAMETER ModuleName
         The name of the module to install and import.
