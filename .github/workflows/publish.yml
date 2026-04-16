@@ -28,12 +28,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # When running in Infrastructure-Common, use local action references so
+      # that changes on the current branch take effect without needing to merge
+      # to master first. External callers must use the pinned master reference
+      # since their checkout does not contain these actions.
       - uses: ./.github/actions/assert-secret
+        if: github.repository == 'VitaliiAndreev/Infrastructure-Common'
+        with:
+          value: ${{ secrets.PSGALLERY_API_KEY }}
+          name: PSGALLERY_API_KEY
+
+      - uses: VitaliiAndreev/Infrastructure-Common/.github/actions/assert-secret@master
+        if: github.repository != 'VitaliiAndreev/Infrastructure-Common'
         with:
           value: ${{ secrets.PSGALLERY_API_KEY }}
           name: PSGALLERY_API_KEY
 
       - uses: ./.github/actions/publish
+        if: github.repository == 'VitaliiAndreev/Infrastructure-Common'
+        with:
+          module-path: ${{ inputs.module-path }}
+          api-key: ${{ secrets.PSGALLERY_API_KEY }}
+
+      - uses: VitaliiAndreev/Infrastructure-Common/.github/actions/publish@master
+        if: github.repository != 'VitaliiAndreev/Infrastructure-Common'
         with:
           module-path: ${{ inputs.module-path }}
           api-key: ${{ secrets.PSGALLERY_API_KEY }}
