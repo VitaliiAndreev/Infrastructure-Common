@@ -13,6 +13,14 @@ on:
     secrets:
       PSGALLERY_API_KEY:
         required: true
+  workflow_dispatch:
+    inputs:
+      module-path:
+        description: >
+          Relative path to the module folder
+          (e.g. 'Infrastructure.Common').
+        required: true
+        type: string
 
 jobs:
   run:

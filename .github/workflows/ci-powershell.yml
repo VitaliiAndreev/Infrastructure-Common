@@ -12,6 +12,7 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   ci-ps51:
