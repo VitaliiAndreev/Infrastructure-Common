@@ -13,7 +13,8 @@ runs:
       # ${{ github.action_path }} is the directory where the runner downloaded
       # this action's files - three levels up is the Infrastructure-Common repo
       # root where Run-IntegrationTests.ps1 lives.
+      # ${{ github.action_path }} is substituted by the runner before PowerShell
+      # runs - it becomes the path where the runner downloaded this action's
+      # files. Run-IntegrationTests.ps1 is co-located in that same directory.
       run: |
-        $script = [IO.Path]::GetFullPath(
-            (Join-Path '${{ github.action_path }}' '..' '..' '..' 'Run-IntegrationTests.ps1'))
-        & $script -TestsRoot '${{ github.workspace }}'
+        & "${{ github.action_path }}/Run-IntegrationTests.ps1" -TestsRoot '${{ github.workspace }}'
