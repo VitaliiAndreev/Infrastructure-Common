@@ -1,0 +1,31 @@
+name: Publish to PSGallery
+description: >
+  Installs RequiredModules declared in the manifest, then publishes the
+  module to PSGallery. Requires the calling workflow to have already
+  checked out the repository.
+
+inputs:
+  module-path:
+    description: >
+      Relative path to the module folder inside the caller's repository
+      (e.g. 'Infrastructure.Common').
+    required: true
+  api-key:
+    description: PSGallery API key.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish module
+      shell: pwsh
+      env:
+        # Passed via env rather than as a script parameter to keep it out
+        # of process listings. The script reads it as $env:API_KEY.
+        API_KEY: ${{ inputs.api-key }}
+      # ${{ github.action_path }} resolves to the directory where this action's
+      # files were checked out, which is always Infrastructure-Common regardless
+      # of which repo is calling the action.
+      run: |
+        . "${{ github.action_path }}\Invoke-Publish.ps1"
+        Invoke-Publish -ModulePath '${{ inputs.module-path }}'

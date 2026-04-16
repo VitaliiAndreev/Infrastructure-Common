@@ -3,6 +3,13 @@ name: Publish to PSGallery
 # Reusable workflow - called from tag.yml after the tag is created.
 on:
   workflow_call:
+    inputs:
+      module-path:
+        description: >
+          Relative path to the module folder inside the caller's repository
+          (e.g. 'Infrastructure.Common').
+        required: true
+        type: string
     secrets:
       PSGALLERY_API_KEY:
         required: true
@@ -13,18 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check PSGALLERY_API_KEY secret
-        shell: pwsh
-        env:
-          API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:API_KEY)) {
-            Write-Error "PSGALLERY_API_KEY secret is not set. Add it under Settings -> Secrets and variables -> Actions."
-            exit 1
-          }
+      - uses: ./.github/actions/assert-secret
+        with:
+          value: ${{ secrets.PSGALLERY_API_KEY }}
+          name: PSGALLERY_API_KEY
 
-      - name: Publish module
-        shell: pwsh
-        env:
-          API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-        run: .\Publish.ps1 -ApiKey $env:API_KEY
+      - uses: ./.github/actions/publish
+        with:
+          module-path: ${{ inputs.module-path }}
+          api-key: ${{ secrets.PSGALLERY_API_KEY }}
