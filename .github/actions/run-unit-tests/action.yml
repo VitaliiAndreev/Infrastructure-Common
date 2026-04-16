@@ -1,0 +1,26 @@
+name: Run unit tests
+description: >
+  Runs unit tests excluding Tests\Integration\ by calling Run-Tests.ps1 from
+  Infrastructure-Common. The script is resolved from this action's directory
+  so no manual checkout of Infrastructure-Common is needed.
+
+inputs:
+  shell:
+    description: >
+      Shell to use: 'powershell' for PowerShell 5.1, 'pwsh' for PowerShell 7.
+    required: false
+    default: pwsh
+
+runs:
+  using: composite
+  steps:
+    - name: Run unit tests
+      shell: ${{ inputs.shell }}
+      # ${{ github.action_path }} is the directory where the runner downloaded
+      # this action's files - three levels up is the Infrastructure-Common repo
+      # root where Run-Tests.ps1 lives. GetFullPath resolves the .. segments.
+      # ${{ github.action_path }} is substituted by the runner before PowerShell
+      # runs - it becomes the path where the runner downloaded this action's
+      # files. Run-Tests.ps1 is co-located in that same directory.
+      run: |
+        & "${{ github.action_path }}\Run-Tests.ps1" -TestsRoot '${{ github.workspace }}'

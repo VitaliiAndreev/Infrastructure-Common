@@ -1,0 +1,20 @@
+name: Run integration tests
+description: >
+  Runs integration tests in Docker containers by calling
+  Run-IntegrationTests.ps1 from Infrastructure-Common. Tests run under
+  PowerShell 7 only - the mcr.microsoft.com/powershell image is Linux-based
+  and PowerShell 5.1 has no Docker image.
+
+runs:
+  using: composite
+  steps:
+    - name: Run integration tests
+      shell: pwsh
+      # ${{ github.action_path }} is the directory where the runner downloaded
+      # this action's files - three levels up is the Infrastructure-Common repo
+      # root where Run-IntegrationTests.ps1 lives.
+      # ${{ github.action_path }} is substituted by the runner before PowerShell
+      # runs - it becomes the path where the runner downloaded this action's
+      # files. Run-IntegrationTests.ps1 is co-located in that same directory.
+      run: |
+        & "${{ github.action_path }}/Run-IntegrationTests.ps1" -TestsRoot '${{ github.workspace }}'

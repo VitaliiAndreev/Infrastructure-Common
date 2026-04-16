@@ -1,7 +1,8 @@
 name: CI
 
-# Reusable workflow that runs integration tests via Run-IntegrationTests.ps1
-# from Infrastructure-Common. Each test file runs in its own
+# Reusable workflow that runs integration tests via the run-integration-tests
+# composite action, which calls Run-IntegrationTests.ps1 from
+# Infrastructure-Common. Each test file runs in its own
 # mcr.microsoft.com/powershell container, matching local Docker runs exactly.
 #
 # If Tests/Integration/ does not exist or contains no test files the script
@@ -20,16 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Check out the shared CI scripts. When running inside Infrastructure-Common
-      # itself, use the current commit so PR changes to the script are tested.
-      # When called from a consumer repo, use master.
-      - name: Checkout Infrastructure-Common (shared CI scripts)
-        uses: actions/checkout@v5
-        with:
-          repository: VitaliiAndreev/Infrastructure-Common
-          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
-          path: .ci-common
-
-      - name: Run integration tests
-        shell: pwsh
-        run: ./.ci-common/Run-IntegrationTests.ps1 -TestsRoot '${{ github.workspace }}'
+      # Local reference - resolves to the current commit in Infrastructure-Common
+      # for both direct PRs and consumer repos calling via workflow_call.
+      - uses: ./.github/actions/run-integration-tests
