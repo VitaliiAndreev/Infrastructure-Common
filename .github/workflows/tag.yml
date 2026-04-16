@@ -12,8 +12,11 @@ jobs:
   test:
     uses: ./.github/workflows/ci-powershell.yml
 
+  test-integration:
+    uses: ./.github/workflows/ci-powershell-docker.yml
+
   tag:
-    needs: test
+    needs: [ test, test-integration ]
     runs-on: windows-latest
     permissions:
       # Required to create and push the tag.
