@@ -1,9 +1,12 @@
 name: CI (Docker)
 
-# Reusable workflow that runs integration tests via the run-integration-tests
-# composite action, which calls Run-IntegrationTests.ps1 from
-# Infrastructure-Common. Each test file runs in its own
-# mcr.microsoft.com/powershell container, matching local Docker runs exactly.
+# Reusable workflow that runs integration tests. Checks out
+# Infrastructure-Common and calls Run-IntegrationTests.ps1 directly. Each
+# test file runs in its own mcr.microsoft.com/powershell container, matching
+# local Docker runs exactly.
+#
+# Consumer repos call this workflow from their own ci-docker.yml instead of
+# maintaining their own run-integration-tests logic for CI.
 #
 # If Tests/Integration/ does not exist or contains no test files the script
 # exits cleanly with no failure.
@@ -21,6 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Local reference - resolves to the current commit in Infrastructure-Common
-      # for both direct PRs and consumer repos calling via workflow_call.
-      - uses: ./.github/actions/run-integration-tests
+      # Check out Infrastructure-Common to access the shared run-integration-tests
+      # script. When running on an Infrastructure-Common PR, use the PR commit so
+      # changes to the script are tested against themselves. Consumer repos
+      # always get master.
+      - uses: actions/checkout@v5
+        with:
+          repository: VitaliiAndreev/Infrastructure-Common
+          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
+          path: .ci-common
+
+      - name: Run integration tests
+        shell: pwsh
+        run: |
+          .ci-common/.github/actions/run-integration-tests/Run-IntegrationTests.ps1 `
+            -TestsRoot '${{ github.workspace }}'
