@@ -1,5 +1,12 @@
 name: CI
 
+# Reusable unit-test workflow for PowerShell repos. Calls Run-Tests.ps1 from
+# Infrastructure-Common, which excludes Tests\Integration\ automatically.
+# Integration tests run separately via ci-powershell-docker.yml.
+#
+# Consumer repos call this workflow from their own ci.yml instead of
+# maintaining their own run-tests logic for CI.
+
 on:
   pull_request:
     branches: [ main, master ]
@@ -7,14 +14,24 @@ on:
 
 jobs:
   ci-ps51:
-    name: CI (PowerShell 5.1)
+    name: Unit (PowerShell 5.1)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Run Pester tests
+      # Check out the shared CI scripts. When running inside Infrastructure-Common
+      # itself, use the current commit so PR changes to Run-Tests.ps1 are tested.
+      # When called from a consumer repo, use master.
+      - name: Checkout Infrastructure-Common (shared CI scripts)
+        uses: actions/checkout@v5
+        with:
+          repository: VitaliiAndreev/Infrastructure-Common
+          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
+          path: .ci-common
+
+      - name: Run unit tests
         shell: powershell
-        run: .\Run-Tests.ps1
+        run: .\.ci-common\Run-Tests.ps1 -TestsRoot '${{ github.workspace }}'
 
       - name: Upload test results
         if: always()
@@ -24,14 +41,21 @@ jobs:
           path: TestResults.xml
 
   ci-ps7:
-    name: CI (PowerShell 7)
+    name: Unit (PowerShell 7)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Run Pester tests
+      - name: Checkout Infrastructure-Common (shared CI scripts)
+        uses: actions/checkout@v5
+        with:
+          repository: VitaliiAndreev/Infrastructure-Common
+          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
+          path: .ci-common
+
+      - name: Run unit tests
         shell: pwsh
-        run: .\Run-Tests.ps1
+        run: .\.ci-common\Run-Tests.ps1 -TestsRoot '${{ github.workspace }}'
 
       - name: Upload test results
         if: always()
