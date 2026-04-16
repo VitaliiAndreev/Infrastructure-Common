@@ -35,7 +35,7 @@ flow through `Invoke-ModuleInstall`.
 # Inline bootstrap - cannot use Invoke-ModuleInstall to install itself.
 $_common = Get-Module -ListAvailable -Name Infrastructure.Common |
     Sort-Object Version -Descending | Select-Object -First 1
-if (-not $_common -or $_common.Version -lt [Version]'1.0.3') {
+if (-not $_common -or $_common.Version -lt [Version]'1.1.0') {
     Install-Module Infrastructure.Common -Scope CurrentUser -Force
 }
 Import-Module Infrastructure.Common -Force -ErrorAction Stop
@@ -74,10 +74,10 @@ Publishing is fully automated via GitHub Actions.
 1. Bump `ModuleVersion` in [Infrastructure.Common/Infrastructure.Common.psd1](Infrastructure.Common/Infrastructure.Common.psd1)
 2. Open a PR, get it reviewed and merged
 
-On merge, [.github/workflows/tag.yml](.github/workflows/tag.yml) runs CI,
-creates a matching git tag, then calls
-[.github/workflows/publish.yml](.github/workflows/publish.yml) to publish
-to PSGallery. No manual tagging step required.
+On merge, [.github/workflows/tag.yml](.github/workflows/tag.yml) runs both
+the unit and integration test workflows, creates a matching git tag, then
+calls [.github/workflows/publish.yml](.github/workflows/publish.yml) to
+publish to PSGallery. No manual tagging step required.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
 `PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.
@@ -135,20 +135,30 @@ Infrastructure-Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  `- Invoke-ModuleInstall.ps1
-|  |- Infrastructure.Common.psm1   # Dot-sources Public\ and exports functions
-|  `- Infrastructure.Common.psd1   # Module manifest (version, GUID, exports)
-|- Tests/               # Pester unit tests
+|  |- Infrastructure.Common.psm1        # Dot-sources Public\ and exports functions
+|  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
+|- Tests/
+|  |- Public/                           # Unit tests mirroring production layout
+|  `- Integration/                      # Integration tests - run in Docker only
 |- .github/
 |  |- actions/
-|  |  `- tag-from-manifest/
-|  |     |- action.yml                  # Composite action - reusable by other repos
-|  |     `- Invoke-TagFromManifest.ps1  # Creates git tag from manifest version
+|  |  |- tag-from-manifest/
+|  |  |  |- action.yml                  # Creates git tag from manifest version
+|  |  |  `- Invoke-TagFromManifest.ps1
+|  |  |- run-unit-tests/
+|  |  |  |- action.yml                  # Reusable composite action for unit tests
+|  |  |  `- Run-Tests.ps1              # Canonical unit test runner implementation
+|  |  `- run-integration-tests/
+|  |     |- action.yml                  # Reusable composite action for integration tests
+|  |     `- Run-IntegrationTests.ps1   # Canonical integration test runner implementation
 |  `- workflows/
-|     |- ci-powershell.yml   # Shared CI workflow - reusable by other repos
-|     |- tag.yml             # Fires on manifest change - runs CI then tags and publishes
-|     `- publish.yml         # Reusable publish workflow - called by tag.yml
-|- Install.ps1      # Installs from source for local development
-|- Publish.ps1      # Publishes to PSGallery (called by publish.yml)
-|- Run-Tests.ps1    # Runs Pester tests (called by ci-powershell.yml)
+|     |- ci-powershell.yml        # Shared unit test workflow - reusable by other repos
+|     |- ci-powershell-docker.yml # Shared integration test workflow - reusable by other repos
+|     |- tag.yml                  # Fires on manifest change - runs CI then tags and publishes
+|     `- publish.yml              # Reusable publish workflow - called by tag.yml
+|- Install.ps1               # Installs from source for local development
+|- Publish.ps1               # Publishes to PSGallery (called by publish.yml)
+|- Run-Tests.ps1             # Runs unit tests locally (thin wrapper)
+|- Run-IntegrationTests.ps1  # Runs integration tests locally in Docker (thin wrapper)
 `- README.md
 ```
