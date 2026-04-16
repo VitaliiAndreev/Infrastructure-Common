@@ -1,4 +1,4 @@
-name: CI
+name: CI (Docker)
 
 # Reusable workflow that runs integration tests via the run-integration-tests
 # composite action, which calls Run-IntegrationTests.ps1 from
