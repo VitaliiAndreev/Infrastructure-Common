@@ -13,6 +13,10 @@
     Requires Docker to be available and running. On Windows use Docker Desktop
     with Linux containers; on Linux Docker must be installed on the host.
 
+    Integration tests run under PowerShell 7 only. The mcr.microsoft.com/powershell
+    image is Linux-based; PowerShell 5.1 is Windows-only and has no Docker image.
+    Unit tests cover 5.1 compatibility via ci-powershell.yml on windows-latest.
+
     Other repos call this script via the sibling checkout:
 
         ..\Infrastructure-Common\Run-IntegrationTests.ps1 -TestsRoot $PSScriptRoot

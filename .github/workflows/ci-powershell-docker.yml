@@ -1,4 +1,4 @@
-name: CI (Integration)
+name: CI
 
 # Reusable workflow that runs integration tests via Run-IntegrationTests.ps1
 # from Infrastructure-Common. Each test file runs in its own
@@ -14,7 +14,7 @@ on:
 
 jobs:
   integration:
-    name: Integration tests
+    name: Integration (PowerShell 7)
     runs-on: ubuntu-latest
 
     steps:
