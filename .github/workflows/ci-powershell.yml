@@ -1,7 +1,8 @@
 name: CI
 
-# Reusable unit-test workflow for PowerShell repos. Calls Run-Tests.ps1 from
-# Infrastructure-Common, which excludes Tests\Integration\ automatically.
+# Reusable unit-test workflow for PowerShell repos. Delegates to the
+# run-unit-tests composite action, which calls Run-Tests.ps1 from
+# Infrastructure-Common and excludes Tests\Integration\ automatically.
 # Integration tests run separately via ci-powershell-docker.yml.
 #
 # Consumer repos call this workflow from their own ci.yml instead of
@@ -19,19 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Check out the shared CI scripts. When running inside Infrastructure-Common
-      # itself, use the current commit so PR changes to Run-Tests.ps1 are tested.
-      # When called from a consumer repo, use master.
-      - name: Checkout Infrastructure-Common (shared CI scripts)
-        uses: actions/checkout@v5
+      # Local reference - GitHub resolves this against the current repo (and
+      # current commit when triggered by a PR). Consumer repos calling this
+      # workflow via workflow_call also resolve against Infrastructure-Common
+      # since that is where the workflow file lives.
+      - uses: ./.github/actions/run-unit-tests
         with:
-          repository: VitaliiAndreev/Infrastructure-Common
-          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
-          path: .ci-common
-
-      - name: Run unit tests
-        shell: powershell
-        run: .\.ci-common\Run-Tests.ps1 -TestsRoot '${{ github.workspace }}'
+          shell: powershell
 
       - name: Upload test results
         if: always()
@@ -46,16 +41,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Checkout Infrastructure-Common (shared CI scripts)
-        uses: actions/checkout@v5
+      - uses: ./.github/actions/run-unit-tests
         with:
-          repository: VitaliiAndreev/Infrastructure-Common
-          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
-          path: .ci-common
-
-      - name: Run unit tests
-        shell: pwsh
-        run: .\.ci-common\Run-Tests.ps1 -TestsRoot '${{ github.workspace }}'
+          shell: pwsh
 
       - name: Upload test results
         if: always()
