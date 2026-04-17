@@ -43,7 +43,7 @@ flow through `Invoke-ModuleInstall`.
 # Inline bootstrap - cannot use Invoke-ModuleInstall to install itself.
 $_common = Get-Module -ListAvailable -Name Infrastructure.Common |
     Sort-Object Version -Descending | Select-Object -First 1
-if (-not $_common -or $_common.Version -lt [Version]'1.1.0') {
+if (-not $_common -or $_common.Version -lt [Version]'1.2.0') {
     Install-Module Infrastructure.Common -Scope CurrentUser -Force
 }
 Import-Module Infrastructure.Common -Force -ErrorAction Stop
