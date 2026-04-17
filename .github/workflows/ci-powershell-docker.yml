@@ -1,12 +1,10 @@
 name: CI (Docker)
 
-# Reusable workflow that runs integration tests. Checks out
-# Infrastructure-Common and calls Run-IntegrationTests.ps1 directly. Each
-# test file runs in its own mcr.microsoft.com/powershell container, matching
-# local Docker runs exactly.
-#
-# Consumer repos call this workflow from their own ci-docker.yml instead of
-# maintaining their own run-integration-tests logic for CI.
+# Reusable workflow that runs integration tests. Delegates to the
+# run-integration-tests composite action in Infrastructure-Common, which
+# contains all the Docker run logic. Consumer repos call this workflow from
+# their own ci-docker.yml and optionally pass docker-image to pin a specific
+# Ubuntu variant (see action inputs for when this is needed).
 #
 # If Tests/Integration/ does not exist or contains no test files the script
 # exits cleanly with no failure.
@@ -15,6 +13,16 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_call:
+    inputs:
+      docker-image:
+        description: >
+          Docker image to run integration tests in. Defaults to
+          mcr.microsoft.com/powershell:latest. Consumer repos that install
+          system packages (e.g. openssh-server) during tests can pin a
+          specific Ubuntu variant to avoid apt compatibility issues.
+        required: false
+        type: string
+        default: 'mcr.microsoft.com/powershell:latest'
   workflow_dispatch:
 
 jobs:
@@ -25,18 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Check out Infrastructure-Common to access the shared run-integration-tests
-      # script. When running on an Infrastructure-Common PR, use the PR commit so
-      # changes to the script are tested against themselves. Consumer repos
-      # always get master.
-      - uses: actions/checkout@v5
+      # When running on an Infrastructure-Common PR, the action is already
+      # checked out at the workspace root - use it directly via a local path.
+      # Consumer repos check out Infrastructure-Common separately so the action
+      # is resolvable at the VitaliiAndreev/... path below.
+      - if: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' }}
+        uses: ./.github/actions/run-integration-tests
         with:
-          repository: VitaliiAndreev/Infrastructure-Common
-          ref: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' && github.sha || 'master' }}
-          path: .ci-common
+          # inputs.docker-image is only populated on workflow_call triggers.
+          # On pull_request / workflow_dispatch it is absent and evaluates to
+          # an empty string, which would override the action's own default and
+          # produce an invalid docker reference. The || fallback restores the
+          # default for non-workflow_call triggers.
+          docker-image: ${{ inputs.docker-image || 'mcr.microsoft.com/powershell:latest' }}
 
-      - name: Run integration tests
-        shell: pwsh
-        run: |
-          .ci-common/.github/actions/run-integration-tests/Run-IntegrationTests.ps1 `
-            -TestsRoot '${{ github.workspace }}'
+      - if: ${{ github.repository != 'VitaliiAndreev/Infrastructure-Common' }}
+        uses: VitaliiAndreev/Infrastructure-Common/.github/actions/run-integration-tests@master
+        with:
+          docker-image: ${{ inputs.docker-image || 'mcr.microsoft.com/powershell:latest' }}

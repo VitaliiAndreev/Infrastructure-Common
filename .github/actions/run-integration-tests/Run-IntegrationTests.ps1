@@ -23,12 +23,23 @@
     Root directory of the repo under test. Tests\Integration\ must be a
     direct descendant.
 
+.PARAMETER DockerImage
+    Docker image to run tests in. Defaults to mcr.microsoft.com/powershell:latest.
+    Repos whose tests require system packages (e.g. openssh-server) that are
+    not available in the default image can pin a specific Ubuntu variant here,
+    e.g. mcr.microsoft.com/powershell:ubuntu-22.04.
+
 .EXAMPLE
     .\Run-IntegrationTests.ps1 -TestsRoot C:\a_Code\Infrastructure-Secrets
+
+.EXAMPLE
+    .\Run-IntegrationTests.ps1 -TestsRoot C:\a_Code\Infrastructure-Vm-Users `
+        -DockerImage mcr.microsoft.com/powershell:ubuntu-22.04
 #>
 
 param(
-    [string] $TestsRoot = $PSScriptRoot
+    [string] $TestsRoot   = $PSScriptRoot,
+    [string] $DockerImage = 'mcr.microsoft.com/powershell:latest'
 )
 
 Set-StrictMode -Version Latest
@@ -96,7 +107,7 @@ if (`$result.FailedCount -gt 0) { exit 1 }
 
     docker run --rm `
         --volume "${resolvedRoot}:/repo" `
-        mcr.microsoft.com/powershell:latest `
+        $DockerImage `
         pwsh -Command $command
 
     if ($LASTEXITCODE -ne 0) {
