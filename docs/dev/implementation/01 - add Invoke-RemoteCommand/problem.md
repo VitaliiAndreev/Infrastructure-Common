@@ -1,4 +1,4 @@
-# Problem: Invoke-RemoteCommand is not shared
+# Problem: Invoke-SshCommand is not shared
 
 ## Index
 
@@ -10,11 +10,12 @@
 
 ## What is changing
 
-`Invoke-RemoteCommand` - a thin wrapper around SSH.NET's `SshClient.RunCommand()` -
-currently lives in `Infrastructure-Vm-Users/hyper-v/ubuntu/common.ps1`. It will be
-moved into this module as a first-class exported function.
+`Invoke-RemoteCommand` - a thin wrapper around SSH.NET's `SshClient.RunCommand()`
+- currently lives in `Infrastructure-Vm-Users/hyper-v/ubuntu/common.ps1`. It will
+be moved into this module as a first-class exported function and renamed to
+`Invoke-SshCommand` to make the transport explicit.
 
-The function:
+The original function as it stands in the consumer repo:
 
 ```powershell
 function Invoke-RemoteCommand {
