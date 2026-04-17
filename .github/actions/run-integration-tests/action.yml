@@ -5,6 +5,17 @@ description: >
   PowerShell 7 only - the mcr.microsoft.com/powershell image is Linux-based
   and PowerShell 5.1 has no Docker image.
 
+inputs:
+  docker-image:
+    description: >
+      Docker image to run tests in. Defaults to
+      mcr.microsoft.com/powershell:latest. Repos whose tests require system
+      packages (e.g. openssh-server) that are not available in the default
+      image can pin a specific Ubuntu variant here, e.g.
+      mcr.microsoft.com/powershell:ubuntu-22.04.
+    required: false
+    default: 'mcr.microsoft.com/powershell:latest'
+
 runs:
   using: composite
   steps:
@@ -17,4 +28,6 @@ runs:
       # runs - it becomes the path where the runner downloaded this action's
       # files. Run-IntegrationTests.ps1 is co-located in that same directory.
       run: |
-        & "${{ github.action_path }}/Run-IntegrationTests.ps1" -TestsRoot '${{ github.workspace }}'
+        & "${{ github.action_path }}/Run-IntegrationTests.ps1" `
+          -TestsRoot '${{ github.workspace }}' `
+          -DockerImage '${{ inputs.docker-image }}'
