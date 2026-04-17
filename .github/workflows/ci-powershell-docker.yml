@@ -40,9 +40,14 @@ jobs:
       - if: ${{ github.repository == 'VitaliiAndreev/Infrastructure-Common' }}
         uses: ./.github/actions/run-integration-tests
         with:
-          docker-image: ${{ inputs.docker-image }}
+          # inputs.docker-image is only populated on workflow_call triggers.
+          # On pull_request / workflow_dispatch it is absent and evaluates to
+          # an empty string, which would override the action's own default and
+          # produce an invalid docker reference. The || fallback restores the
+          # default for non-workflow_call triggers.
+          docker-image: ${{ inputs.docker-image || 'mcr.microsoft.com/powershell:latest' }}
 
       - if: ${{ github.repository != 'VitaliiAndreev/Infrastructure-Common' }}
         uses: VitaliiAndreev/Infrastructure-Common/.github/actions/run-integration-tests@master
         with:
-          docker-image: ${{ inputs.docker-image }}
+          docker-image: ${{ inputs.docker-image || 'mcr.microsoft.com/powershell:latest' }}
