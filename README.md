@@ -9,6 +9,9 @@ Shared PowerShell module providing common utilities for the
 - [Installation](#installation)
 - [Publishing](#publishing)
 - [API reference](#api-reference)
+  - [Assert-RequiredProperties](#assert-requiredproperties)
+  - [Invoke-ModuleInstall](#invoke-moduleinstall)
+  - [Invoke-SshCommand](#invoke-sshcommand)
 - [Repo structure](#repo-structure)
 
 ---
@@ -23,6 +26,11 @@ need to be duplicated and tested in each one independently:
   throwing so the consumer sees the full picture in one run.
 - **`Invoke-ModuleInstall`** - installs a module from PSGallery if absent or
   below the required minimum version, then imports it.
+- **`Invoke-SshCommand`** - runs a shell command on a remote host via an
+  SSH.NET `SshClient` and returns a normalised result object (`Output`,
+  `Error`, `ExitStatus`). Uses SSH.NET directly rather than Posh-SSH cmdlets
+  to avoid a Posh-SSH 3.x bug that breaks key exchange against
+  OpenSSH 9.x (Ubuntu 24.04).
 
 ### Bootstrap note
 
@@ -127,6 +135,35 @@ Invoke-ModuleInstall -ModuleName 'Posh-SSH'
 
 ---
 
+### `Invoke-SshCommand`
+
+Runs a shell command on a remote host via an SSH.NET `SshClient` instance
+and returns a normalised result object.
+
+Requires Posh-SSH to be installed first so its bundled `Renci.SshNet.dll`
+is loaded into the session before a client is constructed.
+
+| Parameter    | Type   | Required | Description                                    |
+|--------------|--------|----------|------------------------------------------------|
+| `-SshClient` | object | Yes      | A connected `Renci.SshNet.SshClient` instance  |
+| `-Command`   | string | Yes      | Shell command to run on the remote host        |
+
+Returns a `PSCustomObject` with:
+
+| Property     | Type   | Description                               |
+|--------------|--------|-------------------------------------------|
+| `Output`     | string | Stdout from the command (`Result`)        |
+| `Error`      | string | Stderr from the command                   |
+| `ExitStatus` | int    | Exit code (0 = success, non-zero = error) |
+
+```powershell
+$r = Invoke-SshCommand -SshClient $sshClient -Command "getent group docker"
+if ($r.ExitStatus -ne 0) { throw "Command failed: $($r.Error)" }
+$r.Output
+```
+
+---
+
 ## Repo structure
 
 ```
@@ -134,11 +171,14 @@ Infrastructure-Common/
 |- Infrastructure.Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
-|  |  `- Invoke-ModuleInstall.ps1
+|  |  |- Invoke-ModuleInstall.ps1
+|  |  `- Invoke-SshCommand.ps1
 |  |- Infrastructure.Common.psm1        # Dot-sources Public\ and exports functions
 |  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
 |- Tests/
-|  |- Public/                           # Unit tests mirroring production layout
+|  |- Assert-RequiredProperties.Tests.ps1
+|  |- Invoke-ModuleInstall.Tests.ps1
+|  |- Invoke-SshCommand.Tests.ps1
 |  `- Integration/                      # Integration tests - run in Docker only
 |- .github/
 |  |- actions/
