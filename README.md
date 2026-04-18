@@ -11,7 +11,7 @@ Shared PowerShell module providing common utilities for the
 - [API reference](#api-reference)
   - [Assert-RequiredProperties](#assert-requiredproperties)
   - [Invoke-ModuleInstall](#invoke-moduleinstall)
-  - [Invoke-SshCommand](#invoke-sshcommand)
+  - [Invoke-SshClientCommand](#invoke-sshclientcommand)
 - [Repo structure](#repo-structure)
 
 ---
@@ -26,7 +26,7 @@ need to be duplicated and tested in each one independently:
   throwing so the consumer sees the full picture in one run.
 - **`Invoke-ModuleInstall`** - installs a module from PSGallery if absent or
   below the required minimum version, then imports it.
-- **`Invoke-SshCommand`** - runs a shell command on a remote host via an
+- **`Invoke-SshClientCommand`** - runs a shell command on a remote host via an
   SSH.NET `SshClient` and returns a normalised result object (`Output`,
   `Error`, `ExitStatus`). Uses SSH.NET directly rather than Posh-SSH cmdlets
   to avoid a Posh-SSH 3.x bug that breaks key exchange against
@@ -135,7 +135,7 @@ Invoke-ModuleInstall -ModuleName 'Posh-SSH'
 
 ---
 
-### `Invoke-SshCommand`
+### `Invoke-SshClientCommand`
 
 Runs a shell command on a remote host via an SSH.NET `SshClient` instance
 and returns a normalised result object.
@@ -157,7 +157,7 @@ Returns a `PSCustomObject` with:
 | `ExitStatus` | int    | Exit code (0 = success, non-zero = error) |
 
 ```powershell
-$r = Invoke-SshCommand -SshClient $sshClient -Command "getent group docker"
+$r = Invoke-SshClientCommand -SshClient $sshClient -Command "getent group docker"
 if ($r.ExitStatus -ne 0) { throw "Command failed: $($r.Error)" }
 $r.Output
 ```
@@ -172,13 +172,13 @@ Infrastructure-Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- Invoke-ModuleInstall.ps1
-|  |  `- Invoke-SshCommand.ps1
+|  |  `- Invoke-SshClientCommand.ps1
 |  |- Infrastructure.Common.psm1        # Dot-sources Public\ and exports functions
 |  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
 |- Tests/
 |  |- Assert-RequiredProperties.Tests.ps1
 |  |- Invoke-ModuleInstall.Tests.ps1
-|  |- Invoke-SshCommand.Tests.ps1
+|  |- Invoke-SshClientCommand.Tests.ps1
 |  `- Integration/                      # Integration tests - run in Docker only
 |- .github/
 |  |- actions/

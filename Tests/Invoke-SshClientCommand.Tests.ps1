@@ -1,5 +1,5 @@
 BeforeAll {
-    . "$PSScriptRoot\..\Infrastructure.Common\Public\Invoke-SshCommand.ps1"
+    . "$PSScriptRoot\..\Infrastructure.Common\Public\Invoke-SshClientCommand.ps1"
 
     # Builds a fake SshClient whose RunCommand method returns a controlled
     # result. Uses GetNewClosure() so each call to New-FakeClient captures
@@ -22,39 +22,39 @@ BeforeAll {
     }
 }
 
-Describe 'Invoke-SshCommand' {
+Describe 'Invoke-SshClientCommand' {
 
     # ------------------------------------------------------------------
     Context 'result mapping' {
     # ------------------------------------------------------------------
 
         It 'maps Result to Output' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient -Result 'hello') -Command 'echo hello'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient -Result 'hello') -Command 'echo hello'
             $r.Output | Should -Be 'hello'
         }
 
         It 'maps Error to Error' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient -Error 'oops') -Command 'bad'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient -Error 'oops') -Command 'bad'
             $r.Error | Should -Be 'oops'
         }
 
         It 'maps ExitStatus to ExitStatus on success' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient -ExitStatus 0) -Command 'true'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient -ExitStatus 0) -Command 'true'
             $r.ExitStatus | Should -Be 0
         }
 
         It 'maps ExitStatus to ExitStatus on failure' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient -ExitStatus 1) -Command 'false'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient -ExitStatus 1) -Command 'false'
             $r.ExitStatus | Should -Be 1
         }
 
         It 'maps a non-zero exit code other than 1' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient -ExitStatus 127) -Command 'missing'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient -ExitStatus 127) -Command 'missing'
             $r.ExitStatus | Should -Be 127
         }
 
         It 'maps all three fields correctly when all are populated' {
-            $r = Invoke-SshCommand `
+            $r = Invoke-SshClientCommand `
                 -SshClient (New-FakeClient -Result 'out' -Error 'err' -ExitStatus 2) `
                 -Command 'cmd'
             $r.Output     | Should -Be 'out'
@@ -69,7 +69,7 @@ Describe 'Invoke-SshCommand' {
 
         It 'passes the Command string verbatim to RunCommand' {
             # Capture the argument that RunCommand receives so we can assert
-            # Invoke-SshCommand does not modify or re-encode it.
+            # Invoke-SshClientCommand does not modify or re-encode it.
             $script:_captured = $null
             $client = [PSCustomObject]@{}
             Add-Member -InputObject $client -MemberType ScriptMethod -Name 'RunCommand' -Value {
@@ -78,7 +78,7 @@ Describe 'Invoke-SshCommand' {
                 [PSCustomObject]@{ Result = ''; Error = ''; ExitStatus = 0 }
             }
             $raw = "sudo getent group 'docker'"
-            Invoke-SshCommand -SshClient $client -Command $raw | Out-Null
+            Invoke-SshClientCommand -SshClient $client -Command $raw | Out-Null
             $script:_captured | Should -Be $raw
         }
     }
@@ -88,7 +88,7 @@ Describe 'Invoke-SshCommand' {
     # ------------------------------------------------------------------
 
         It 'returns an object with exactly Output, Error, and ExitStatus properties' {
-            $r = Invoke-SshCommand -SshClient (New-FakeClient) -Command 'id'
+            $r = Invoke-SshClientCommand -SshClient (New-FakeClient) -Command 'id'
             ($r | Get-Member -MemberType NoteProperty).Name | Sort-Object |
                 Should -Be @('Error', 'ExitStatus', 'Output')
         }
