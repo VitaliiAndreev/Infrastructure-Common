@@ -6,10 +6,11 @@ on:
     inputs:
       module-path:
         description: >
-          Relative path to the module folder inside the caller's repository
-          (e.g. 'Infrastructure.Common').
-        required: true
+          Root directory to search for a .psd1 manifest. Defaults to the
+          repository root.
+        required: false
         type: string
+        default: '.'
     secrets:
       PSGALLERY_API_KEY:
         required: true
@@ -17,10 +18,11 @@ on:
     inputs:
       module-path:
         description: >
-          Relative path to the module folder
-          (e.g. 'Infrastructure.Common').
-        required: true
+          Root directory to search for a .psd1 manifest. Defaults to the
+          repository root.
+        required: false
         type: string
+        default: '.'
 
 jobs:
   run:

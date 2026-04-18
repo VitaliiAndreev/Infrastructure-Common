@@ -7,9 +7,11 @@ description: >
 inputs:
   module-path:
     description: >
-      Relative path to the module folder inside the caller's repository
-      (e.g. 'Infrastructure.Common').
-    required: true
+      Root directory to search for a .psd1 manifest. Defaults to the
+      repository root, which is correct for the one-module-per-repo
+      convention used across all Infrastructure repos.
+    required: false
+    default: '.'
   api-key:
     description: PSGallery API key.
     required: true
@@ -28,4 +30,4 @@ runs:
       # of which repo is calling the action.
       run: |
         . "${{ github.action_path }}\Invoke-Publish.ps1"
-        Invoke-Publish -ModulePath '${{ inputs.module-path }}'
+        Invoke-Publish -SearchRoot '${{ inputs.module-path }}'

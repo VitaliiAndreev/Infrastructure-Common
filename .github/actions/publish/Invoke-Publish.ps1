@@ -8,14 +8,21 @@ function Invoke-Publish {
     # PSGallery. Installing them first ensures validation passes in clean
     # environments such as CI runners.
     param(
-        [Parameter(Mandatory)]
-        [string] $ModulePath
+        # Root to search for the module manifest. Defaults to the current
+        # directory so callers that follow the one-module-per-repo convention
+        # do not need to specify a path.
+        [string] $SearchRoot = '.'
     )
 
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
 
-    $psd1 = Get-ChildItem $ModulePath -Filter '*.psd1' | Select-Object -First 1
+    $psd1 = Get-ChildItem $SearchRoot -Filter '*.psd1' -Recurse | Select-Object -First 1
+    if (-not $psd1) {
+        throw "No .psd1 manifest found under '$SearchRoot'."
+    }
+
+    $modulePath = $psd1.DirectoryName
     $manifest = Import-PowerShellDataFile $psd1.FullName
     if ($manifest.ContainsKey('RequiredModules')) {
         foreach ($req in $manifest.RequiredModules) {
@@ -25,5 +32,5 @@ function Invoke-Publish {
         }
     }
 
-    Publish-Module -Path $ModulePath -NuGetApiKey $env:API_KEY -Repository PSGallery
+    Publish-Module -Path $modulePath -NuGetApiKey $env:API_KEY -Repository PSGallery
 }
