@@ -11,7 +11,7 @@
       non-empty; throws a descriptive error if not.
     - Invoke-ModuleInstall: installs a PSGallery module if absent or below a
       minimum version, then imports it.
-    - Invoke-SshCommand: runs a shell command on a remote host via an SSH.NET
+    - Invoke-SshClientCommand: runs a shell command on a remote host via an SSH.NET
       SshClient and returns a normalised result object (Output, Error,
       ExitStatus).
 
@@ -24,6 +24,6 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Public\Assert-RequiredProperties.ps1"
 . "$PSScriptRoot\Public\Invoke-ModuleInstall.ps1"
-. "$PSScriptRoot\Public\Invoke-SshCommand.ps1"
+. "$PSScriptRoot\Public\Invoke-SshClientCommand.ps1"
 
-Export-ModuleMember -Function Assert-RequiredProperties, Invoke-ModuleInstall, Invoke-SshCommand
+Export-ModuleMember -Function Assert-RequiredProperties, Invoke-ModuleInstall, Invoke-SshClientCommand
