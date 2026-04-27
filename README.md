@@ -10,6 +10,7 @@ Shared PowerShell module providing common utilities for the
 - [Publishing](#publishing)
 - [API reference](#api-reference)
   - [Assert-RequiredProperties](#assert-requiredproperties)
+  - [Invoke-GitHubApi](#invoke-githubapi)
   - [Invoke-ModuleInstall](#invoke-moduleinstall)
   - [Invoke-SshClientCommand](#invoke-sshclientcommand)
 - [Repo structure](#repo-structure)
@@ -24,6 +25,10 @@ need to be duplicated and tested in each one independently:
 - **`Assert-RequiredProperties`** - validates that a PSCustomObject has all
   required properties present and non-empty; collects every violation before
   throwing so the consumer sees the full picture in one run.
+- **`Invoke-GitHubApi`** - general-purpose GitHub REST API caller; handles
+  authentication, User-Agent, and JSON body serialization so callers only
+  supply a token, URI, and optional body. Accepts both PATs and GitHub App
+  installation tokens.
 - **`Invoke-ModuleInstall`** - installs a module from PSGallery if absent or
   below the required minimum version, then imports it.
 - **`Invoke-SshClientCommand`** - runs a shell command on a remote host via an
@@ -115,6 +120,35 @@ Assert-RequiredProperties -Object $vm `
 
 ---
 
+### `Invoke-GitHubApi`
+
+General-purpose GitHub REST API caller. Sets `Authorization: Bearer`,
+`User-Agent: Infrastructure`, and `Content-Type: application/json` on
+every request.
+
+| Parameter | Type      | Required | Description                                         |
+|-----------|-----------|----------|-----------------------------------------------------|
+| `-Token`  | string    | Yes      | Bearer token - PAT or GitHub App installation token |
+| `-Uri`    | string    | Yes      | Full GitHub API URI                                 |
+| `-Method` | string    | No       | HTTP method; defaults to `'Get'`                    |
+| `-Body`   | hashtable | No       | Request body; serialized to JSON automatically      |
+
+Returns the raw `Invoke-RestMethod` response.
+
+```powershell
+# GET - list runners
+$runners = Invoke-GitHubApi -Token $token `
+    -Uri 'https://api.github.com/repos/owner/repo/actions/runners'
+
+# POST - create a deployment
+$deployment = Invoke-GitHubApi -Token $token `
+    -Uri 'https://api.github.com/repos/owner/repo/deployments' `
+    -Method 'Post' `
+    -Body @{ ref = 'master'; environment = 'e2e-workstation'; auto_merge = $false }
+```
+
+---
+
 ### `Invoke-ModuleInstall`
 
 Installs a module from PSGallery if absent or below the minimum required
@@ -171,12 +205,14 @@ Infrastructure-Common/
 |- Infrastructure.Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
+|  |  |- Invoke-GitHubApi.ps1
 |  |  |- Invoke-ModuleInstall.ps1
 |  |  `- Invoke-SshClientCommand.ps1
 |  |- Infrastructure.Common.psm1        # Dot-sources Public\ and exports functions
 |  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
 |- Tests/
 |  |- Assert-RequiredProperties.Tests.ps1
+|  |- Invoke-GitHubApi.Tests.ps1
 |  |- Invoke-ModuleInstall.Tests.ps1
 |  |- Invoke-SshClientCommand.Tests.ps1
 |  `- Integration/                      # Integration tests - run in Docker only

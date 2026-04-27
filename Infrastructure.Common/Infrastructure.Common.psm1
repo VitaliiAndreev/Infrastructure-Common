@@ -23,6 +23,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Public\Assert-RequiredProperties.ps1"
+. "$PSScriptRoot\Public\Invoke-GitHubApi.ps1"
 . "$PSScriptRoot\Public\Invoke-ModuleInstall.ps1"
 . "$PSScriptRoot\Public\Invoke-SshClientCommand.ps1"
 
