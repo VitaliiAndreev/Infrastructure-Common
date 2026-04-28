@@ -49,8 +49,8 @@ function Set-DeploymentStatus {
     if ($PSBoundParameters.ContainsKey('LogUrl'))      { $body['log_url']     = $LogUrl }
 
     Invoke-GitHubApi `
-        -Token  $Token `
-        -Uri    "https://api.github.com/repos/$Owner/$Repo/deployments/$DeploymentId/statuses" `
-        -Method 'Post' `
-        -Body   $body
+        -Token    $Token `
+        -Endpoint "repos/$Owner/$Repo/deployments/$DeploymentId/statuses" `
+        -Method   'Post' `
+        -Body     $body
 }

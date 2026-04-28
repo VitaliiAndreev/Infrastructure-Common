@@ -1,5 +1,5 @@
 BeforeAll {
-    function Invoke-GitHubApi { param($Token, $Uri, $Method, $Body) }
+    function Invoke-GitHubApi { param($Token, $Endpoint, $Uri, $Method, $Body) }
 
     . "$PSScriptRoot\..\Infrastructure.Common\Public\Set-DeploymentStatus.ps1"
 }
@@ -20,7 +20,7 @@ Describe 'Set-DeploymentStatus' {
                 -DeploymentId 42 -State 'success'
 
             Should -Invoke Invoke-GitHubApi -ParameterFilter {
-                $Uri -eq 'https://api.github.com/repos/myorg/myrepo/deployments/42/statuses'
+                $Endpoint -eq 'repos/myorg/myrepo/deployments/42/statuses'
             }
         }
     }

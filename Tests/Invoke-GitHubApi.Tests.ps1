@@ -33,11 +33,35 @@ Describe 'Invoke-GitHubApi' {
             }
         }
 
-        It 'passes the URI unchanged' {
+        It 'passes -Uri unchanged to Invoke-RestMethod' {
             Invoke-GitHubApi -Token 't' -Uri 'https://api.github.com/repos/owner/repo/actions/runners'
             Should -Invoke Invoke-RestMethod -ParameterFilter {
                 $Uri -eq 'https://api.github.com/repos/owner/repo/actions/runners'
             }
+        }
+
+        It 'expands -Endpoint to the full GitHub API base URL' {
+            Invoke-GitHubApi -Token 't' -Endpoint 'repos/owner/repo/actions/runners'
+            Should -Invoke Invoke-RestMethod -ParameterFilter {
+                $Uri -eq 'https://api.github.com/repos/owner/repo/actions/runners'
+            }
+        }
+    }
+
+    # ------------------------------------------------------------------
+    Context 'parameter validation' {
+    # ------------------------------------------------------------------
+
+        It 'throws when both -Endpoint and -Uri are supplied' {
+            {
+                Invoke-GitHubApi -Token 't' `
+                    -Endpoint 'repos/o/r' `
+                    -Uri      'https://api.github.com/repos/o/r'
+            } | Should -Throw
+        }
+
+        It 'throws when neither -Endpoint nor -Uri is supplied' {
+            { Invoke-GitHubApi -Token 't' } | Should -Throw
         }
     }
 

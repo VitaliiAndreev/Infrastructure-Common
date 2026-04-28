@@ -239,6 +239,7 @@ Infrastructure-Common/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- Invoke-GitHubApi.ps1
 |  |  |- Invoke-ModuleInstall.ps1
+|  |  |- Set-DeploymentStatus.ps1
 |  |  `- Invoke-SshClientCommand.ps1
 |  |- Infrastructure.Common.psm1        # Dot-sources Public\ and exports functions
 |  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
@@ -246,6 +247,7 @@ Infrastructure-Common/
 |  |- Assert-RequiredProperties.Tests.ps1
 |  |- Invoke-GitHubApi.Tests.ps1
 |  |- Invoke-ModuleInstall.Tests.ps1
+|  |- Set-DeploymentStatus.Tests.ps1
 |  |- Invoke-SshClientCommand.Tests.ps1
 |  `- Integration/                      # Integration tests - run in Docker only
 |- .github/
