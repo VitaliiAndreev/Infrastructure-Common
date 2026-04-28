@@ -47,7 +47,8 @@ function Get-PendingDeployment {
         # A deployment with no statuses at all is pending. A deployment
         # whose most-recent status is non-terminal is still in flight.
         # The statuses endpoint returns them newest-first.
-        $latestState = if ($statuses.Count -gt 0) { $statuses[0].state } else { $null }
+        $statusArray = ConvertTo-Array $statuses
+        $latestState = if ($statusArray.Count -gt 0) { $statusArray[0].state } else { $null }
 
         if ($latestState -notin $terminalStatuses) {
             return $deployment

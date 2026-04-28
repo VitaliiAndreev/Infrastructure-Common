@@ -1,6 +1,7 @@
 BeforeAll {
     function Invoke-GitHubApi { param($Token, $Endpoint, $Uri, $Method, $Body) }
 
+    . "$PSScriptRoot\..\Infrastructure.Common\Public\ConvertTo-Array.ps1"
     . "$PSScriptRoot\..\Infrastructure.Common\Public\Get-PendingDeployment.ps1"
 }
 
