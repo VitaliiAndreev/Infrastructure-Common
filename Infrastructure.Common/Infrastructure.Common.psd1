@@ -5,6 +5,11 @@
     Description       = 'Shared PowerShell utilities for infrastructure repos.'
     PowerShellVersion = '5.1'
     RootModule        = 'Infrastructure.Common.psm1'
+    # FunctionsToExport is module discovery metadata: used by
+    # Get-Module -ListAvailable, Find-Module, and PSGallery without loading
+    # the module. It does NOT control what is callable at runtime - that is
+    # governed by Export-ModuleMember in the psm1, which takes precedence.
+    # Both lists must stay in sync. Tests\Module.Tests.ps1 enforces this.
     FunctionsToExport = @(
         'Assert-RequiredProperties',
         'ConvertTo-Array',
