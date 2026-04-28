@@ -10,14 +10,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  check:
+    runs-on: windows-latest
+    outputs:
+      version_is_new: ${{ steps.check.outputs.version_is_new }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: check
+        shell: pwsh
+        run: |
+          $version = (Import-PowerShellDataFile 'Infrastructure.Common\Infrastructure.Common.psd1').ModuleVersion
+          $isNew = -not (git tag -l $version)
+          "version_is_new=$($isNew.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host $(if ($isNew) { "Version $version is new - proceeding." } else { "Version $version already tagged - skipping." })
+
   test:
+    needs: check
+    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
     uses: ./.github/workflows/ci-powershell.yml
 
   test-integration:
+    needs: check
+    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
     uses: ./.github/workflows/ci-powershell-docker.yml
 
   tag:
-    needs: [ test, test-integration ]
+    needs: [ check, test, test-integration ]
+    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
     runs-on: windows-latest
     permissions:
       # Required to create and push the tag.
