@@ -11,6 +11,13 @@
     file found under <TestsRoot>\Tests\, excluding Tests\Integration\ (which
     requires Docker - see run-integration-tests action).
 
+    Also injects the shared Module.Tests.ps1 from this action directory,
+    which verifies that every Public\*.ps1 file is registered in the module
+    manifest and psm1. Requires the repo to follow the convention:
+    a single subdirectory whose name matches its .psd1 (e.g.
+    Infrastructure.Common\Infrastructure.Common.psd1). If no such directory
+    is found the shared test is skipped silently.
+
 .PARAMETER TestsRoot
     Root directory of the repo under test. Tests\ must be a direct child.
 
@@ -61,6 +68,25 @@ $testFiles = Get-ChildItem -Path ([IO.Path]::Combine($TestsRoot, 'Tests')) `
         -not $integrationPath -or
         -not $_.FullName.StartsWith($integrationPath)
     }
+
+# ---------------------------------------------------------------------------
+# Inject the shared module registration test.
+#   Detects the module directory by convention: a direct subdirectory of
+#   TestsRoot whose name matches a .psd1 inside it (e.g.
+#   Infrastructure.Common\Infrastructure.Common.psd1). Sets MODULE_TESTS_ROOT
+#   so the shared test file can locate the module without knowing the repo name.
+# ---------------------------------------------------------------------------
+
+$moduleDir = Get-ChildItem -Path $TestsRoot -Directory |
+    Where-Object { Test-Path ([IO.Path]::Combine($_.FullName, "$($_.Name).psd1")) } |
+    Select-Object -First 1
+
+$sharedModuleTest = [IO.Path]::Combine($PSScriptRoot, 'Module.Tests.ps1')
+
+if ($moduleDir -and (Test-Path $sharedModuleTest)) {
+    $env:MODULE_TESTS_ROOT = $moduleDir.FullName
+    $testFiles = @($testFiles) + (Get-Item $sharedModuleTest)
+}
 
 # Guard against running with no test files - Pester throws rather than
 # returning a result object, which breaks the FailedCount check below.

@@ -1,10 +1,17 @@
+# Shared module registration test, injected by Run-Tests.ps1 for every repo
+# in the Infrastructure-* family. The module root is passed via the
+# MODULE_TESTS_ROOT environment variable set by Run-Tests.ps1 before Pester
+# is invoked.
 BeforeAll {
-    $root   = [IO.Path]::Combine($PSScriptRoot, '..', 'Infrastructure.Common')
-    $psd1   = [IO.Path]::Combine($root, 'Infrastructure.Common.psd1')
-    $psm1   = [IO.Path]::Combine($root, 'Infrastructure.Common.psm1')
+    $root = $env:MODULE_TESTS_ROOT
+    if (-not $root) {
+        throw 'MODULE_TESTS_ROOT env var is not set. This file must be run via Run-Tests.ps1.'
+    }
 
-    $script:manifest    = Import-PowerShellDataFile $psd1
-    $script:psm1Content = Get-Content $psm1 -Raw
+    $script:manifest    = Import-PowerShellDataFile (
+        Get-ChildItem -Path $root -Filter '*.psd1' | Select-Object -First 1 -ExpandProperty FullName)
+    $script:psm1Content = Get-Content (
+        Get-ChildItem -Path $root -Filter '*.psm1' | Select-Object -First 1 -ExpandProperty FullName) -Raw
 
     # Convention: filename == function name (e.g. ConvertTo-Array.ps1).
     $script:publicFns = Get-ChildItem `
@@ -13,7 +20,7 @@ BeforeAll {
         Select-Object -ExpandProperty BaseName
 }
 
-Describe 'Infrastructure.Common module registration' {
+Describe 'Module registration' {
 
     It 'all Public functions are listed in FunctionsToExport' {
         $missing = $script:publicFns |
