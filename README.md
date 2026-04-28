@@ -10,6 +10,7 @@ Shared PowerShell module providing common utilities for the
 - [Publishing](#publishing)
 - [API reference](#api-reference)
   - [Assert-RequiredProperties](#assert-requiredproperties)
+  - [Get-GitHubAppToken](#get-githubapptoken)
   - [Invoke-GitHubApi](#invoke-githubapi)
   - [Invoke-ModuleInstall](#invoke-moduleinstall)
   - [Invoke-SshClientCommand](#invoke-sshclientcommand)
@@ -26,6 +27,10 @@ need to be duplicated and tested in each one independently:
 - **`Assert-RequiredProperties`** - validates that a PSCustomObject has all
   required properties present and non-empty; collects every violation before
   throwing so the consumer sees the full picture in one run.
+- **`Get-GitHubAppToken`** - exchanges a GitHub App private key (`.pem`) for
+  a short-lived installation access token. Builds and signs a JWT with RS256,
+  then calls the GitHub Apps API to obtain a bearer token valid for 1 hour.
+  Requires PowerShell 7+.
 - **`Invoke-GitHubApi`** - general-purpose GitHub REST API caller; handles
   authentication, User-Agent, and JSON body serialization so callers only
   supply a token, URI, and optional body. Accepts both PATs and GitHub App
@@ -120,6 +125,38 @@ sees the full picture in one run rather than fixing one field at a time.
 Assert-RequiredProperties -Object $vm `
     -Properties @('vmName', 'ipAddress') `
     -Context "VM '$($vm.vmName)'"
+```
+
+---
+
+### `Get-GitHubAppToken`
+
+Exchanges a GitHub App private key for a short-lived installation access
+token. Signs a JWT with RS256 and calls
+`POST /app/installations/{id}/access_tokens`. Requires PowerShell 7+.
+
+| Parameter          | Type   | Required | Description                                           |
+|--------------------|--------|----------|-------------------------------------------------------|
+| `-AppId`           | int    | Yes      | GitHub App ID (shown under "App ID" on the app page)  |
+| `-InstallationId`  | int    | Yes      | Installation ID for the target repo or organisation   |
+| `-PrivateKeyPath`  | string | Yes      | Path to the RSA private key `.pem` downloaded from GitHub |
+
+Returns a `PSCustomObject` with:
+
+| Property     | Type   | Description                                    |
+|--------------|--------|------------------------------------------------|
+| `Token`      | string | Bearer token; pass to `Invoke-GitHubApi`       |
+| `ExpiresAt`  | string | ISO 8601 expiry timestamp (1 hour from issue)  |
+
+```powershell
+$appToken = Get-GitHubAppToken `
+    -AppId          $appId `
+    -InstallationId $installationId `
+    -PrivateKeyPath 'C:\private\my-app.private-key.pem'
+
+# Token is valid for 1 hour; refresh before ExpiresAt - 5 minutes.
+$runners = Invoke-GitHubApi -Token $appToken.Token `
+    -Uri 'https://api.github.com/repos/owner/repo/actions/runners'
 ```
 
 ---
@@ -237,6 +274,7 @@ Infrastructure-Common/
 |- Infrastructure.Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
+|  |  |- Get-GitHubAppToken.ps1
 |  |  |- Invoke-GitHubApi.ps1
 |  |  |- Invoke-ModuleInstall.ps1
 |  |  |- Set-DeploymentStatus.ps1
@@ -245,6 +283,7 @@ Infrastructure-Common/
 |  `- Infrastructure.Common.psd1        # Module manifest (version, GUID, exports)
 |- Tests/
 |  |- Assert-RequiredProperties.Tests.ps1
+|  |- Get-GitHubAppToken.Tests.ps1
 |  |- Invoke-GitHubApi.Tests.ps1
 |  |- Invoke-ModuleInstall.Tests.ps1
 |  |- Set-DeploymentStatus.Tests.ps1

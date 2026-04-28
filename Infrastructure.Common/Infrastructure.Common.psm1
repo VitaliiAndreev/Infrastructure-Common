@@ -9,6 +9,8 @@
     Current functions:
     - Assert-RequiredProperties: validates object fields are present and
       non-empty; throws a descriptive error if not.
+    - Get-GitHubAppToken: exchanges a GitHub App private key for a
+      short-lived installation access token (JWT -> bearer token).
     - Invoke-GitHubApi: general-purpose GitHub REST API caller; handles
       authentication, User-Agent, and JSON body serialization.
     - Invoke-ModuleInstall: installs a PSGallery module if absent or below a
@@ -27,6 +29,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Public\Assert-RequiredProperties.ps1"
+. "$PSScriptRoot\Public\Get-GitHubAppToken.ps1"
 . "$PSScriptRoot\Public\Invoke-GitHubApi.ps1"
 . "$PSScriptRoot\Public\Invoke-ModuleInstall.ps1"
 . "$PSScriptRoot\Public\Invoke-SshClientCommand.ps1"
@@ -34,6 +37,7 @@ $ErrorActionPreference = 'Stop'
 
 Export-ModuleMember -Function `
     Assert-RequiredProperties, `
+    Get-GitHubAppToken, `
     Invoke-GitHubApi, `
     Invoke-ModuleInstall, `
     Invoke-SshClientCommand, `

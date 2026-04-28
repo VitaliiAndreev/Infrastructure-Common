@@ -7,6 +7,7 @@
     RootModule        = 'Infrastructure.Common.psm1'
     FunctionsToExport = @(
         'Assert-RequiredProperties',
+        'Get-GitHubAppToken',
         'Invoke-GitHubApi',
         'Invoke-ModuleInstall',
         'Invoke-SshClientCommand',
