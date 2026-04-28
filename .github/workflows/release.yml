@@ -1,0 +1,71 @@
+name: Release
+
+# Reusable workflow shared by all Infrastructure-* module repos.
+# Creates a git tag for the manifest version and publishes to PSGallery.
+# Callers are responsible for the version check and tests before invoking
+# this workflow - see tag.yml for the expected call pattern.
+#
+# The tag-from-manifest action and publish workflow are referenced
+# conditionally so that changes on a feature branch in Infrastructure-Common
+# are tested against the local versions rather than the published master.
+
+on:
+  workflow_call:
+    inputs:
+      psd1:
+        description: >
+          Path to the .psd1 manifest relative to the repo root
+          (e.g. Infrastructure.Common\Infrastructure.Common.psd1).
+        required: true
+        type: string
+      module-path:
+        description: >
+          Module directory passed to Publish-Module
+          (e.g. Infrastructure.Common).
+        required: true
+        type: string
+    secrets:
+      PSGALLERY_API_KEY:
+        required: true
+
+jobs:
+  tag:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_created: ${{ steps.tag-local.outputs.tag_created || steps.tag-external.outputs.tag_created }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: tag-local
+        if: github.repository == 'VitaliiAndreev/Infrastructure-Common'
+        uses: ./.github/actions/tag-from-manifest
+        with:
+          psd1: ${{ inputs.psd1 }}
+
+      - id: tag-external
+        if: github.repository != 'VitaliiAndreev/Infrastructure-Common'
+        uses: VitaliiAndreev/Infrastructure-Common/.github/actions/tag-from-manifest@master
+        with:
+          psd1: ${{ inputs.psd1 }}
+
+  publish-local:
+    needs: tag
+    if: needs.tag.outputs.tag_created == 'true' && github.repository == 'VitaliiAndreev/Infrastructure-Common'
+    uses: ./.github/workflows/publish.yml
+    with:
+      module-path: ${{ inputs.module-path }}
+    secrets:
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+
+  publish-external:
+    needs: tag
+    if: needs.tag.outputs.tag_created == 'true' && github.repository != 'VitaliiAndreev/Infrastructure-Common'
+    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
+    with:
+      module-path: ${{ inputs.module-path }}
+    secrets:
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
