@@ -9,6 +9,8 @@
     Current functions:
     - Assert-RequiredProperties: validates object fields are present and
       non-empty; throws a descriptive error if not.
+    - Invoke-GitHubApi: general-purpose GitHub REST API caller; handles
+      authentication, User-Agent, and JSON body serialization.
     - Invoke-ModuleInstall: installs a PSGallery module if absent or below a
       minimum version, then imports it.
     - Invoke-SshClientCommand: runs a shell command on a remote host via an SSH.NET
@@ -32,6 +34,7 @@ $ErrorActionPreference = 'Stop'
 
 Export-ModuleMember -Function `
     Assert-RequiredProperties, `
+    Invoke-GitHubApi, `
     Invoke-ModuleInstall, `
     Invoke-SshClientCommand, `
     Set-DeploymentStatus
