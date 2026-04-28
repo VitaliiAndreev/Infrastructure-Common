@@ -1,4 +1,8 @@
 BeforeAll {
+    # Get-GitHubAppToken uses RSA.ImportFromPem, a .NET 5 API not available in
+    # Windows PowerShell 5.1. Skip all setup and tests when running under PS 5.
+    if ($PSVersionTable.PSVersion.Major -lt 7) { return }
+
     function Invoke-GitHubApi { param($Token, $Endpoint, $Uri, $Method, $Body) }
 
     . "$PSScriptRoot\..\Infrastructure.Common\Public\Get-GitHubAppToken.ps1"
@@ -8,7 +12,11 @@ BeforeAll {
     # The public key stays in $Script:TestRsa for signature verification.
     $Script:TestRsa = [Security.Cryptography.RSA]::Create(2048)
     $Script:KeyPath = [IO.Path]::GetTempFileName() + '.pem'
-    Set-Content -Path $Script:KeyPath -Value $Script:TestRsa.ExportRSAPrivateKeyPem()
+    # ExportRSAPrivateKeyPem() requires .NET 5+. Build the PEM manually from
+    # PKCS#1 DER bytes (ExportRSAPrivateKey is available from .NET Core 3.0).
+    $der = $Script:TestRsa.ExportRSAPrivateKey()
+    $b64 = [Convert]::ToBase64String($der, [Base64FormattingOptions]::InsertLineBreaks)
+    Set-Content -Path $Script:KeyPath -Value "-----BEGIN RSA PRIVATE KEY-----`n$b64`n-----END RSA PRIVATE KEY-----"
 
     # Decodes a base64url string to raw bytes (reverses the RFC 7515 encoding
     # applied by Get-GitHubAppToken).
@@ -21,11 +29,12 @@ BeforeAll {
 }
 
 AfterAll {
+    if ($PSVersionTable.PSVersion.Major -lt 7) { return }
     if ($null -ne $Script:TestRsa) { $Script:TestRsa.Dispose() }
     if (Test-Path $Script:KeyPath)  { Remove-Item $Script:KeyPath }
 }
 
-Describe 'Get-GitHubAppToken' {
+Describe 'Get-GitHubAppToken' -Skip:($PSVersionTable.PSVersion.Major -lt 7) {
 
     BeforeAll {
         # Capture the JWT produced by a single call so all JWT structure tests
