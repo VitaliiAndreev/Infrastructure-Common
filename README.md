@@ -11,6 +11,7 @@ Shared PowerShell module providing common utilities for the
 - [API reference](#api-reference)
   - [Assert-RequiredProperties](#assert-requiredproperties)
   - [Get-GitHubAppToken](#get-githubapptoken)
+  - [Get-PendingDeployment](#get-pendingdeployment)
   - [Invoke-GitHubApi](#invoke-githubapi)
   - [Invoke-ModuleInstall](#invoke-moduleinstall)
   - [Invoke-SshClientCommand](#invoke-sshclientcommand)
@@ -31,6 +32,10 @@ need to be duplicated and tested in each one independently:
   a short-lived installation access token. Builds and signs a JWT with RS256,
   then calls the GitHub Apps API to obtain a bearer token valid for 1 hour.
   Requires PowerShell 7+.
+- **`Get-PendingDeployment`** - queries the GitHub Deployments API for the
+  given environment and returns the oldest deployment that has not yet reached
+  a terminal status (`success`, `failure`, `error`, `inactive`), or `$null`
+  if none exists. Used by the E2E polling agent to detect work to do.
 - **`Invoke-GitHubApi`** - general-purpose GitHub REST API caller; handles
   authentication, User-Agent, and JSON body serialization so callers only
   supply a token, URI, and optional body. Accepts both PATs and GitHub App
@@ -161,6 +166,37 @@ $runners = Invoke-GitHubApi -Token $appToken.Token `
 
 ---
 
+### `Get-PendingDeployment`
+
+Returns the oldest deployment for the given repo and environment that has not
+yet reached a terminal status (`success`, `failure`, `error`, `inactive`).
+Returns `$null` when there is nothing to process. Used by the E2E polling agent
+on each tick to detect work to do.
+
+| Parameter       | Type   | Required | Description                                           |
+|-----------------|--------|----------|-------------------------------------------------------|
+| `-Token`        | string | Yes      | Bearer token - PAT or GitHub App installation token   |
+| `-Owner`        | string | Yes      | GitHub organisation or user that owns the repo        |
+| `-Repo`         | string | Yes      | Repository name (without the owner prefix)            |
+| `-Environment`  | string | Yes      | Deployment environment name to filter by              |
+
+Returns a GitHub deployment object (or `$null`).
+
+```powershell
+$deployment = Get-PendingDeployment `
+    -Token       $token `
+    -Owner       'my-org' `
+    -Repo        'Infrastructure-E2E' `
+    -Environment 'e2e-workstation'
+
+if ($null -ne $deployment) {
+    Set-DeploymentStatus -Token $token -Owner 'my-org' -Repo 'Infrastructure-E2E' `
+        -DeploymentId $deployment.id -State 'in_progress'
+}
+```
+
+---
+
 ### `Invoke-GitHubApi`
 
 General-purpose GitHub REST API caller. Sets `Authorization: Bearer`,
@@ -275,6 +311,7 @@ Infrastructure-Common/
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- Get-GitHubAppToken.ps1
+|  |  |- Get-PendingDeployment.ps1
 |  |  |- Invoke-GitHubApi.ps1
 |  |  |- Invoke-ModuleInstall.ps1
 |  |  |- Set-DeploymentStatus.ps1
@@ -284,6 +321,7 @@ Infrastructure-Common/
 |- Tests/
 |  |- Assert-RequiredProperties.Tests.ps1
 |  |- Get-GitHubAppToken.Tests.ps1
+|  |- Get-PendingDeployment.Tests.ps1
 |  |- Invoke-GitHubApi.Tests.ps1
 |  |- Invoke-ModuleInstall.Tests.ps1
 |  |- Set-DeploymentStatus.Tests.ps1

@@ -8,6 +8,7 @@
     FunctionsToExport = @(
         'Assert-RequiredProperties',
         'Get-GitHubAppToken',
+        'Get-PendingDeployment',
         'Invoke-GitHubApi',
         'Invoke-ModuleInstall',
         'Invoke-SshClientCommand',
