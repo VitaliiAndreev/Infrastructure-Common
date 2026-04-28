@@ -12,10 +12,16 @@ inputs:
       (e.g. 'Infrastructure.Common\Infrastructure.Common.psd1').
     required: true
 
+outputs:
+  tag_created:
+    description: "'true' if a new tag was created, 'false' if it already existed."
+    value: ${{ steps.tag.outputs.tag_created }}
+
 runs:
   using: composite
   steps:
     - name: Tag from manifest version
+      id: tag
       shell: pwsh
       # ${{ github.action_path }} is substituted by the runner before PowerShell
       # runs - it becomes the literal path where the runner downloaded this

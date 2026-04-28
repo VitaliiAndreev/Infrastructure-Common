@@ -16,10 +16,16 @@ function Invoke-TagFromManifest {
     # git tag -l returns the tag name if it exists, empty string otherwise.
     if (git tag -l $version) {
         Write-Host "Tag '$version' already exists - nothing to do."
+        # Signal to the calling workflow that no new tag was created so the
+        # publish job can be skipped. Without this, publish runs on every psd1
+        # touch (e.g. comment edits) and fails trying to re-publish an existing
+        # version to PSGallery.
+        "tag_created=false" >> $env:GITHUB_OUTPUT
         return
     }
 
     git tag $version
     git push origin $version
     Write-Host "Created and pushed tag '$version'."
+    "tag_created=true" >> $env:GITHUB_OUTPUT
 }
