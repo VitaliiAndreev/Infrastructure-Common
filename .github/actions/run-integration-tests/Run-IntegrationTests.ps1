@@ -12,6 +12,13 @@
     never affect the host environment. Local and CI runs use this same script,
     so behaviour is identical in both environments.
 
+    Also injects the shared Module.Tests.ps1 from this action directory, which
+    verifies that every FunctionsToExport entry is callable after Import-Module.
+    Uses the same module-directory convention as the unit test runner: a direct
+    subdirectory of TestsRoot whose name matches its .psd1. Any RequiredModules
+    declared in the manifest are installed from PSGallery inside the container
+    before the import is attempted.
+
     Requires Docker to be available and running. On Windows use Docker Desktop
     with Linux containers; on Linux Docker must be installed on the host.
 
@@ -62,12 +69,6 @@ $integrationDir = [IO.Path]::Combine($TestsRoot, 'Tests', 'Integration')
 $testFiles = Get-ChildItem -Path $integrationDir `
     -Filter '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue
 
-if (-not $testFiles) {
-    Write-Host "No integration test files found under $integrationDir." `
-        -ForegroundColor Yellow
-    exit 0
-}
-
 # ---------------------------------------------------------------------------
 # Run each test file in its own container.
 #   The repo root is mounted at /repo inside the container. Pester is
@@ -77,6 +78,27 @@ if (-not $testFiles) {
 
 # Resolve to an absolute path so the Docker volume mount is unambiguous.
 $resolvedRoot = (Resolve-Path $TestsRoot).Path
+
+# ---------------------------------------------------------------------------
+# Detect module directory for the shared registration test.
+#   Same convention as the unit test runner: a direct subdirectory of
+#   TestsRoot whose name matches a .psd1 inside it.
+# ---------------------------------------------------------------------------
+
+$moduleDir = Get-ChildItem -Path $TestsRoot -Directory |
+    Where-Object { Test-Path ([IO.Path]::Combine($_.FullName, "$($_.Name).psd1")) } |
+    Select-Object -First 1
+
+$sharedIntegrationTest = [IO.Path]::Combine($PSScriptRoot, 'Module.Tests.ps1')
+$resolvedActionDir     = (Resolve-Path $PSScriptRoot).Path
+
+$hasSharedTest = $moduleDir -and (Test-Path $sharedIntegrationTest)
+
+if (-not $testFiles -and -not $hasSharedTest) {
+    Write-Host "No integration test files found under $integrationDir." `
+        -ForegroundColor Yellow
+    exit 0
+}
 
 $failed = 0
 
@@ -112,6 +134,42 @@ if (`$result.FailedCount -gt 0) { exit 1 }
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "$($file.Name) FAILED" -ForegroundColor Red
+        $failed++
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Run the shared module exports integration test if a module dir was detected.
+#   Mounted at /shared inside the container so it is independent of the repo
+#   layout. MODULE_TESTS_ROOT points to the module directory inside /repo.
+# ---------------------------------------------------------------------------
+
+if ($hasSharedTest) {
+    $moduleContainerRoot = "/repo/$($moduleDir.Name)"
+
+    Write-Host ''
+    Write-Host '---- Module.Tests.ps1 (shared) ----' -ForegroundColor Cyan
+
+    $command = @"
+Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+Import-Module Pester -MinimumVersion 5.0
+`$env:MODULE_TESTS_ROOT = '$moduleContainerRoot'
+`$config = New-PesterConfiguration
+`$config.Run.Path         = '/shared/Module.Tests.ps1'
+`$config.Output.Verbosity = 'Detailed'
+`$config.Run.PassThru     = `$true
+`$result = Invoke-Pester -Configuration `$config
+if (`$result.FailedCount -gt 0) { exit 1 }
+"@
+
+    docker run --rm `
+        --volume "${resolvedRoot}:/repo" `
+        --volume "${resolvedActionDir}:/shared" `
+        $DockerImage `
+        pwsh -Command $command
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Module.Tests.ps1 (shared) FAILED' -ForegroundColor Red
         $failed++
     }
 }
