@@ -45,8 +45,8 @@ $ErrorActionPreference = 'Stop'
 # It takes precedence over FunctionsToExport in the psd1 at runtime, so both
 # must be kept in sync. FunctionsToExport serves a separate purpose: it is
 # read by Get-Module -ListAvailable, Find-Module, and PSGallery for fast
-# discovery without loading the module. Tests\Module.Tests.ps1 enforces
-# that every Public\*.ps1 file appears in both.
+# discovery without loading the module. The shared Module.Tests.ps1 in the
+# run-unit-tests action enforces that every Public\*.ps1 file appears in both.
 Export-ModuleMember -Function `
     Assert-RequiredProperties, `
     ConvertTo-Array, `
