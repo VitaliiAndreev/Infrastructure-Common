@@ -31,8 +31,6 @@ on:
 jobs:
   tag:
     runs-on: windows-latest
-    permissions:
-      contents: write
     outputs:
       tag_created: ${{ steps.tag-local.outputs.tag_created || steps.tag-external.outputs.tag_created }}
     steps:
