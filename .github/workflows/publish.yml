@@ -1,6 +1,6 @@
 name: Publish to PSGallery
 
-# Reusable workflow - called from tag.yml after the tag is created.
+# Reusable workflow - called from release.yml after the tag is created.
 on:
   workflow_call:
     inputs:

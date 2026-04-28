@@ -1,69 +1,52 @@
 name: Release
 
-# Reusable workflow shared by all Infrastructure-* module repos.
-# Creates a git tag for the manifest version and publishes to PSGallery.
-# Callers are responsible for the version check and tests before invoking
-# this workflow - see tag.yml for the expected call pattern.
-#
-# The tag-from-manifest action and publish workflow are referenced
-# conditionally so that changes on a feature branch in Infrastructure-Common
-# are tested against the local versions rather than the published master.
-
 on:
-  workflow_call:
-    inputs:
-      psd1:
-        description: >
-          Path to the .psd1 manifest relative to the repo root
-          (e.g. Infrastructure.Common\Infrastructure.Common.psd1).
-        required: true
-        type: string
-      module-path:
-        description: >
-          Module directory passed to Publish-Module
-          (e.g. Infrastructure.Common).
-        required: true
-        type: string
-    secrets:
-      PSGALLERY_API_KEY:
-        required: true
+  push:
+    branches:
+      - master
+    paths:
+      # Only fire when the manifest itself changes, not on every push.
+      - 'Infrastructure.Common/Infrastructure.Common.psd1'
+  workflow_dispatch:
 
 jobs:
-  tag:
+  check-version:
     runs-on: windows-latest
     outputs:
-      tag_created: ${{ steps.tag-local.outputs.tag_created || steps.tag-external.outputs.tag_created }}
+      version_is_new: ${{ steps.check.outputs.version_is_new }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - id: tag-local
-        if: github.repository == 'VitaliiAndreev/Infrastructure-Common'
-        uses: ./.github/actions/tag-from-manifest
+      - id: check
+        uses: ./.github/actions/check-version-is-new
         with:
-          psd1: ${{ inputs.psd1 }}
+          psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
 
-      - id: tag-external
-        if: github.repository != 'VitaliiAndreev/Infrastructure-Common'
-        uses: VitaliiAndreev/Infrastructure-Common/.github/actions/tag-from-manifest@master
-        with:
-          psd1: ${{ inputs.psd1 }}
+  test-unit:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci-powershell.yml
 
-  publish-local:
+  test-integration:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci-powershell-docker.yml
+
+  tag:
+    needs: [ check-version, test-unit, test-integration ]
+    if: needs.check-version.outputs.version_is_new == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/tag.yml
+    with:
+      psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
+
+  publish:
     needs: tag
-    if: needs.tag.outputs.tag_created == 'true' && github.repository == 'VitaliiAndreev/Infrastructure-Common'
+    if: needs.tag.outputs.tag_created == 'true'
     uses: ./.github/workflows/publish.yml
     with:
-      module-path: ${{ inputs.module-path }}
-    secrets:
-      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-
-  publish-external:
-    needs: tag
-    if: needs.tag.outputs.tag_created == 'true' && github.repository != 'VitaliiAndreev/Infrastructure-Common'
-    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
-    with:
-      module-path: ${{ inputs.module-path }}
+      module-path: Infrastructure.Common
     secrets:
       PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
