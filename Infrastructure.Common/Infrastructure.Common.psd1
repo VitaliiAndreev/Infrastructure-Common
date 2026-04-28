@@ -1,5 +1,5 @@
 @{
-    ModuleVersion     = '1.3.1'
+    ModuleVersion     = '1.3.2'
     GUID              = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
     Author            = 'Vitaly Andrev'
     Description       = 'Shared PowerShell utilities for infrastructure repos.'
@@ -7,6 +7,7 @@
     RootModule        = 'Infrastructure.Common.psm1'
     FunctionsToExport = @(
         'Assert-RequiredProperties',
+        'ConvertTo-Array',
         'Get-GitHubAppToken',
         'Get-PendingDeployment',
         'Invoke-GitHubApi',
