@@ -1,0 +1,33 @@
+name: Check if manifest version is new
+description: >
+  Reads ModuleVersion from the .psd1 manifest and checks whether a matching
+  git tag already exists. Outputs version_is_new=true when the version has
+  not yet been tagged, false otherwise. Requires fetch-depth: 0 in the
+  calling checkout step so all existing tags are visible.
+
+inputs:
+  psd1:
+    description: >
+      Path to the .psd1 manifest relative to the repo root
+      (e.g. Infrastructure.Common\Infrastructure.Common.psd1).
+    required: true
+
+outputs:
+  version_is_new:
+    description: "'true' if no tag exists for the current ModuleVersion, 'false' otherwise."
+    value: ${{ steps.check.outputs.version_is_new }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: pwsh
+      run: |
+        $version = (Import-PowerShellDataFile '${{ inputs.psd1 }}').ModuleVersion
+        $isNew = -not (git tag -l $version)
+        "version_is_new=$($isNew.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+        Write-Host $(if ($isNew) {
+            "Version $version is new - proceeding."
+        } else {
+            "Version $version already tagged - skipping."
+        })

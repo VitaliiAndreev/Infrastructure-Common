@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
+  check-version:
     runs-on: windows-latest
     outputs:
       version_is_new: ${{ steps.check.outputs.version_is_new }}
@@ -19,49 +19,26 @@ jobs:
         with:
           fetch-depth: 0
       - id: check
-        shell: pwsh
-        run: |
-          $version = (Import-PowerShellDataFile 'Infrastructure.Common\Infrastructure.Common.psd1').ModuleVersion
-          $isNew = -not (git tag -l $version)
-          "version_is_new=$($isNew.ToString().ToLower())" >> $env:GITHUB_OUTPUT
-          Write-Host $(if ($isNew) { "Version $version is new - proceeding." } else { "Version $version already tagged - skipping." })
-
-  test:
-    needs: check
-    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
-    uses: ./.github/workflows/ci-powershell.yml
-
-  test-integration:
-    needs: check
-    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
-    uses: ./.github/workflows/ci-powershell-docker.yml
-
-  tag:
-    needs: [ check, test, test-integration ]
-    if: github.event_name == 'workflow_dispatch' || needs.check.outputs.version_is_new == 'true'
-    runs-on: windows-latest
-    permissions:
-      # Required to create and push the tag.
-      contents: write
-    outputs:
-      tag_created: ${{ steps.tag.outputs.tag_created }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          # Full history is required so `git tag -l` can see all existing
-          # tags and avoid creating duplicates.
-          fetch-depth: 0
-
-      - id: tag
-        uses: ./.github/actions/tag-from-manifest
+        uses: ./.github/actions/check-version-is-new
         with:
           psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
 
-  publish:
-    needs: tag
-    if: needs.tag.outputs.tag_created == 'true'
-    uses: ./.github/workflows/publish.yml
+  test-unit:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci-powershell.yml
+
+  test-integration:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci-powershell-docker.yml
+
+  release:
+    needs: [ check-version, test-unit, test-integration ]
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/release.yml
     with:
+      psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
       module-path: Infrastructure.Common
     secrets:
       PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
