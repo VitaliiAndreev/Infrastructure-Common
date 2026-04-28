@@ -36,6 +36,8 @@ jobs:
   release:
     needs: [ check-version, test-unit, test-integration ]
     if: needs.check-version.outputs.version_is_new == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/release.yml
     with:
       psd1: 'Infrastructure.Common\Infrastructure.Common.psd1'
