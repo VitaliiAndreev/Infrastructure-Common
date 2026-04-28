@@ -13,6 +13,7 @@ Shared PowerShell module providing common utilities for the
   - [Invoke-GitHubApi](#invoke-githubapi)
   - [Invoke-ModuleInstall](#invoke-moduleinstall)
   - [Invoke-SshClientCommand](#invoke-sshclientcommand)
+  - [Set-DeploymentStatus](#set-deploymentstatus)
 - [Repo structure](#repo-structure)
 
 ---
@@ -31,6 +32,9 @@ need to be duplicated and tested in each one independently:
   installation tokens.
 - **`Invoke-ModuleInstall`** - installs a module from PSGallery if absent or
   below the required minimum version, then imports it.
+- **`Set-DeploymentStatus`** - posts a status update to an existing GitHub
+  deployment. Used by the E2E polling agent to mark a deployment as
+  `in_progress` when picked up and `success` or `failure` when tests finish.
 - **`Invoke-SshClientCommand`** - runs a shell command on a remote host via an
   SSH.NET `SshClient` and returns a normalised result object (`Output`,
   `Error`, `ExitStatus`). Uses SSH.NET directly rather than Posh-SSH cmdlets
@@ -194,6 +198,34 @@ Returns a `PSCustomObject` with:
 $r = Invoke-SshClientCommand -SshClient $sshClient -Command "getent group docker"
 if ($r.ExitStatus -ne 0) { throw "Command failed: $($r.Error)" }
 $r.Output
+```
+
+---
+
+### `Set-DeploymentStatus`
+
+Posts a status update to an existing GitHub deployment. Wraps
+`POST /repos/{owner}/{repo}/deployments/{id}/statuses`.
+
+| Parameter        | Type   | Required | Description                                                   |
+|------------------|--------|----------|---------------------------------------------------------------|
+| `-Token`         | string | Yes      | Bearer token - PAT or GitHub App installation token           |
+| `-Owner`         | string | Yes      | GitHub organisation or user that owns the repo                |
+| `-Repo`          | string | Yes      | Repository name (without the owner prefix)                    |
+| `-DeploymentId`  | int    | Yes      | Numeric deployment ID (from `Get-PendingDeployment`)          |
+| `-State`         | string | Yes      | Deployment state: `error`, `failure`, `inactive`, `in_progress`, `queued`, `pending`, `success` |
+| `-Description`   | string | No       | Human-readable description shown in the GitHub UI             |
+| `-LogUrl`        | string | No       | URL to job logs; shown as a link in the GitHub UI             |
+
+```powershell
+# Mark as in progress when work begins
+Set-DeploymentStatus -Token $token -Owner 'my-org' -Repo 'Infrastructure-E2E' `
+    -DeploymentId $deployment.id -State 'in_progress' -Description 'E2E tests running'
+
+# Mark as success or failure when tests finish
+Set-DeploymentStatus -Token $token -Owner 'my-org' -Repo 'Infrastructure-E2E' `
+    -DeploymentId $deployment.id -State 'success' `
+    -Description 'All E2E tests passed' -LogUrl 'https://github.com/my-org/Infrastructure-E2E/actions/runs/123'
 ```
 
 ---

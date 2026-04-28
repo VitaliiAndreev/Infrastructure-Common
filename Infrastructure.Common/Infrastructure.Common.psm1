@@ -14,6 +14,8 @@
     - Invoke-SshClientCommand: runs a shell command on a remote host via an SSH.NET
       SshClient and returns a normalised result object (Output, Error,
       ExitStatus).
+    - Set-DeploymentStatus: posts a status update to an existing GitHub
+      deployment (in_progress, success, failure, etc.).
 
     Each public function lives in its own file under Public\ and is
     dot-sourced below so diffs stay focused on a single function per commit.
@@ -26,5 +28,10 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Invoke-GitHubApi.ps1"
 . "$PSScriptRoot\Public\Invoke-ModuleInstall.ps1"
 . "$PSScriptRoot\Public\Invoke-SshClientCommand.ps1"
+. "$PSScriptRoot\Public\Set-DeploymentStatus.ps1"
 
-Export-ModuleMember -Function Assert-RequiredProperties, Invoke-ModuleInstall, Invoke-SshClientCommand
+Export-ModuleMember -Function `
+    Assert-RequiredProperties, `
+    Invoke-ModuleInstall, `
+    Invoke-SshClientCommand, `
+    Set-DeploymentStatus

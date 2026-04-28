@@ -5,7 +5,12 @@
     Description       = 'Shared PowerShell utilities for infrastructure repos.'
     PowerShellVersion = '5.1'
     RootModule        = 'Infrastructure.Common.psm1'
-    FunctionsToExport = @('Assert-RequiredProperties', 'Invoke-ModuleInstall', 'Invoke-SshClientCommand')
+    FunctionsToExport = @(
+        'Assert-RequiredProperties',
+        'Invoke-ModuleInstall',
+        'Invoke-SshClientCommand',
+        'Set-DeploymentStatus'
+    )
     CmdletsToExport   = @()
     AliasesToExport   = @()
 }
