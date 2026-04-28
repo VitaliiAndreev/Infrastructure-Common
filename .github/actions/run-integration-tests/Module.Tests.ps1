@@ -16,11 +16,14 @@ BeforeAll {
 
     # Install any RequiredModules declared in the manifest so Import-Module
     # does not fail on a missing dependency (e.g. Infrastructure.Common for
-    # Infrastructure.Secrets).
-    foreach ($req in @($Script:Manifest.RequiredModules)) {
-        $name = if ($req -is [string]) { $req } else { $req.ModuleName }
-        if (-not (Get-Module -ListAvailable -Name $name)) {
-            Install-Module $name -Scope CurrentUser -Force -SkipPublisherCheck
+    # Infrastructure.Secrets). The guard is necessary because a missing key
+    # returns $null, and @($null) would produce a one-element null array.
+    if ($Script:Manifest.RequiredModules) {
+        foreach ($req in @($Script:Manifest.RequiredModules)) {
+            $name = if ($req -is [string]) { $req } else { $req.ModuleName }
+            if ($name -and -not (Get-Module -ListAvailable -Name $name)) {
+                Install-Module $name -Scope CurrentUser -Force -SkipPublisherCheck
+            }
         }
     }
 
