@@ -142,6 +142,20 @@ Describe 'Get-PendingDeployment' {
             $result.id | Should -Be 30
         }
 
+        It 'returns a deployment whose latest status is pending' {
+            Mock Invoke-GitHubApi {
+                if ($Endpoint -like '*/statuses') {
+                    return @([PSCustomObject]@{ state = 'pending' })
+                }
+                return @([PSCustomObject]@{ id = 40 })
+            }
+
+            $result = Get-PendingDeployment `
+                -Token 'tok' -Owner 'org' -Repo 'repo' -Environment 'e2e-workstation'
+
+            $result.id | Should -Be 40
+        }
+
         It 'returns the oldest pending deployment when multiple deployments exist' {
             # id=1 is terminal (success), id=2 and id=3 are pending (no statuses).
             # Sorted by id ascending, id=2 is returned first.
