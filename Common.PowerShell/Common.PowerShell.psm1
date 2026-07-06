@@ -45,6 +45,10 @@
       ('e2e-timing/v1'); Import rebuilds it defensively (missing/malformed ->
       $null + warning, never throws) so a parent process can graft a child's
       timings under its own tree.
+    - Write-TimingSpanReport: renders an N-level tree as a depth-indented,
+      single-colour console block (status tag, F2 seconds, percent-of-parent,
+      and a total line for the root) - the arbitrary-depth, merge-aware
+      counterpart of the 2-level Write-PhaseTimingReport.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -97,14 +101,14 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Retry\Invoke-WithRetry.ps1"
 
 # Timing tree - the N-level span framework (nested model + accumulation +
-# cross-process JSON export/import). The report renderer is added alongside
-# these as the feature lands.
+# cross-process JSON export/import + the depth-indented console renderer).
 . "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
 . "$PSScriptRoot\Public\Timing\Export-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Import-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Initialize-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Measure-TimingSpan.ps1"
 . "$PSScriptRoot\Public\Timing\New-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Write-TimingSpanReport.ps1"
 
 # Export-ModuleMember controls what is actually callable after Import-Module.
 # It takes precedence over FunctionsToExport in the psd1 at runtime, so both
@@ -134,4 +138,5 @@ Export-ModuleMember -Function `
     Import-TimingSpanTree, `
     Initialize-TimingSpanTree, `
     Measure-TimingSpan, `
-    New-TimingSpanTree
+    New-TimingSpanTree, `
+    Write-TimingSpanReport

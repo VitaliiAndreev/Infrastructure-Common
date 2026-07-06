@@ -35,6 +35,7 @@ Shared PowerShell functions and reusable PowerShell centric GitHub composite act
     - [Add-TimingSpanDuration](#add-timingspanduration)
     - [Export-TimingSpanTree](#export-timingspantree)
     - [Import-TimingSpanTree](#import-timingspantree)
+    - [Write-TimingSpanReport](#write-timingspanreport)
 - [Reusable CI](#reusable-ci)
 - [Repo structure](#repo-structure)
 
@@ -124,6 +125,12 @@ and one imported from a child process) coexist in one process.
   handoff: Export serialises a tree to the versioned nested-JSON schema
   (`e2e-timing/v1`); Import rebuilds it defensively (missing/malformed ->
   `$null` + warning, never throws) so a parent can graft a child's timings.
+- **`Write-TimingSpanReport`** - renders a context (or a bare node subtree) as
+  a depth-indented, single-colour console block: per span a fixed-width
+  `[OK]`/`[FAILED]`/`[SKIPPED]`/`[RUNNING]` tag, invariant-culture `F2`
+  seconds, and its percent of the parent's elapsed, closed by a
+  `total observed` line for the root. The arbitrary-depth, merge-aware
+  counterpart of the provisioner's 2-level phase-timing report.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see

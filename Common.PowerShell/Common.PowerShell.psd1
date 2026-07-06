@@ -36,7 +36,8 @@
         'Import-TimingSpanTree',
         'Initialize-TimingSpanTree',
         'Measure-TimingSpan',
-        'New-TimingSpanTree'
+        'New-TimingSpanTree',
+        'Write-TimingSpanReport'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

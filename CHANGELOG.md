@@ -27,6 +27,15 @@ history and the tag list.
   an in-memory subtree, tolerating a missing or malformed file (returns
   `$null` with a warning, never throws) so a crashed child never fails the
   parent's own report.
+- `Write-TimingSpanReport` - renders a timing context or a bare node subtree
+  as a depth-indented, single-colour (`DarkGreen`) console block: per span a
+  fixed-width `[OK]`/`[FAILED]`/`[SKIPPED]`/`[RUNNING]` tag, invariant-culture
+  `F2` seconds, and percent of its parent's effective elapsed, closed by a
+  `total observed` line for the root. The arbitrary-depth, merge-aware
+  counterpart of the provisioner's 2-level `Write-PhaseTimingReport`; a
+  `SKIPPED` node shows a dash and no percent, and the total counts the root's
+  effective elapsed (top-level spans, no sub-step double-count). The version
+  bump lands in a subsequent step.
 
 ## [9.0.1] - 2026-06-17
 

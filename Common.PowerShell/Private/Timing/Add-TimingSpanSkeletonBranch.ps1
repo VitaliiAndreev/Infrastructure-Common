@@ -59,7 +59,11 @@ function Add-TimingSpanSkeletonBranch {
 
         # Descend so nested Children pre-declare under the node just minted,
         # not under the original parent - this is what gives arbitrary depth.
-        if ($children.Count -gt 0) {
+        # Re-wrap in @() before .Count: a single-element Children array is
+        # unrolled to a scalar by the if-expression assignment above, and
+        # under StrictMode Latest .Count on a scalar throws rather than
+        # returning 1.
+        if (@($children).Count -gt 0) {
             Add-TimingSpanSkeletonBranch `
                 -Context  $Context `
                 -Parent   $node `
