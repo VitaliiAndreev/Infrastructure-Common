@@ -89,8 +89,8 @@ Describe 'Initialize-PhaseTimings' {
         $subs[1].Order | Should -BeLessThan $c.Order
 
         # Every node starts NotStarted regardless of nesting depth.
-        $allNodes = @($a, $b, $c, $subs[0], $subs[1])
-        ($allNodes | ForEach-Object Status) -join ',' |
+        $declaredNodes = @($a, $b, $c, $subs[0], $subs[1])
+        ($declaredNodes | ForEach-Object Status) -join ',' |
             Should -Be 'NotStarted,NotStarted,NotStarted,NotStarted,NotStarted'
     }
 
