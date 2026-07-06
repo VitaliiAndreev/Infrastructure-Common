@@ -101,6 +101,16 @@ function Write-TimingSpanReport {
         return $childSum
     }
 
+    # The one authority for the elapsed column's format: a right-aligned F2
+    # seconds field under invariant culture so '.' is the decimal separator on
+    # every host and the per-row and total lines stay byte-identical in width.
+    function formatSeconds($elapsedMs) {
+        return [string]::Format(
+            [cultureinfo]::InvariantCulture,
+            '{0,8:F2} s',
+            ($elapsedMs / 1000.0))
+    }
+
     # Flatten the descendants into rows (depth + node + the parent's effective
     # elapsed), depth-first in Order so the console block reflects declaration
     # order at every level. The parent's effective is captured here - during
@@ -156,10 +166,7 @@ function Write-TimingSpanReport {
             $duration = '     -    '
             $percent  = ''
         } else {
-            $duration = [string]::Format(
-                [cultureinfo]::InvariantCulture,
-                '{0,8:F2} s',
-                ($node.ElapsedMs / 1000.0))
+            $duration = formatSeconds $node.ElapsedMs
 
             # Share of the parent's effective elapsed (captured on the row when
             # the tree was flattened). For a top-level row the parent is the
@@ -185,9 +192,7 @@ function Write-TimingSpanReport {
     # the sum of its top-level spans (sub-step time is already inside them, so
     # it is never re-added), matching the 2-level report's total semantics.
     Write-Host ('  ' + $divider) -ForegroundColor $color
-    Write-Host ('  total observed: ' + ([string]::Format(
-        [cultureinfo]::InvariantCulture,
-        '{0,8:F2} s',
-        ((getEffectiveElapsedMs $root) / 1000.0)))) -ForegroundColor $color
+    Write-Host ('  total observed: ' +
+        (formatSeconds (getEffectiveElapsedMs $root))) -ForegroundColor $color
     Write-Host $banner -ForegroundColor $color
 }
