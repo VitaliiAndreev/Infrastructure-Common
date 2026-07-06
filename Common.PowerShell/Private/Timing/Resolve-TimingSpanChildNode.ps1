@@ -54,14 +54,9 @@ function Resolve-TimingSpanChildNode {
         return $node
     }
 
-    $node = [pscustomobject]@{
-        Order     = $Context.NextOrder
-        Name      = $Name
-        Status    = 'NotStarted'
-        ElapsedMs = $null
-        Source    = if ([string]::IsNullOrEmpty($Source)) { $null } else { $Source }
-        Children  = [System.Collections.Generic.List[object]]::new()
-    }
+    # Mint through the single node factory; the Order is drawn from the
+    # context's monotonic counter, which then advances.
+    $node = New-TimingSpanNode -Order $Context.NextOrder -Name $Name -Source $Source
     $Context.NextOrder = $Context.NextOrder + 1
     $Parent.Children.Add($node) | Out-Null
     return $node

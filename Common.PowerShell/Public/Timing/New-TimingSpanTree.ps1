@@ -54,16 +54,10 @@ function New-TimingSpanTree {
         [string] $Source
     )
 
-    $root = [pscustomobject]@{
-        Order     = 0
-        Name      = $RootName
-        # The root is a live container from the moment it exists; a report
-        # emitted mid-run shows it as Running until the run completes.
-        Status    = 'Running'
-        ElapsedMs = $null
-        Source    = if ([string]::IsNullOrEmpty($Source)) { $null } else { $Source }
-        Children  = [System.Collections.Generic.List[object]]::new()
-    }
+    # The root is a live container from the moment it exists; a report emitted
+    # mid-run shows it as Running until the run completes. Order 0 anchors the
+    # sort; the first minted child takes 1.
+    $root = New-TimingSpanNode -Order 0 -Name $RootName -Status 'Running' -Source $Source
 
     $context = [pscustomobject]@{
         Root      = $root

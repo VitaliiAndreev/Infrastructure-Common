@@ -755,7 +755,8 @@ Common-PowerShell/
 |  |- Private/                          # Module-internal helpers (not exported); mirrors Public\ layout
 |  |  |- Retry/
 |  |  |  `- Assert-RetryStrategyShape.ps1
-|  |  `- Timing/                        # Timing-tree internals (mint / accumulate / skeleton walk / JSON map)
+|  |  `- Timing/                        # Timing-tree internals (node factory / mint / accumulate / skeleton walk / JSON map)
+|  |     |- New-TimingSpanNode.ps1
 |  |     |- Resolve-TimingSpanChildNode.ps1
 |  |     |- Add-TimingSpanNodeElapsed.ps1
 |  |     |- Add-TimingSpanSkeletonBranch.ps1

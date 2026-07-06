@@ -1,6 +1,7 @@
 BeforeAll {
     $timingPrivate = "$PSScriptRoot\..\..\Common.PowerShell\Private\Timing"
     $timingPublic  = "$PSScriptRoot\..\..\Common.PowerShell\Public\Timing"
+    . "$timingPrivate\New-TimingSpanNode.ps1"
     . "$timingPrivate\Resolve-TimingSpanChildNode.ps1"
     . "$timingPrivate\Add-TimingSpanNodeElapsed.ps1"
     . "$timingPrivate\ConvertTo-TimingSpanExportNode.ps1"

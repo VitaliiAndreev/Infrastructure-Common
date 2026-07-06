@@ -49,25 +49,22 @@ function ConvertFrom-TimingSpanImportNode {
     $elapsedProperty = $properties['elapsedMs']
     $sourceProperty  = $properties['source']
 
-    # Match the live node shape and property order exactly so a round-trip
-    # (export then import) reconstructs an equivalent subtree.
-    [pscustomobject]@{
-        Order     = if ($null -ne $orderProperty) { [int]$orderProperty.Value } else { 0 }
-        Name      = if ($null -ne $nameProperty) { [string]$nameProperty.Value } else { '' }
-        Status    = if ($null -ne $statusProperty) { [string]$statusProperty.Value } else { 'NotStarted' }
-        # elapsedMs is $null until a span is timed; preserve that distinction
-        # rather than coercing an un-run node's null to 0.
-        ElapsedMs = if ($null -ne $elapsedProperty -and $null -ne $elapsedProperty.Value) {
-            [int64]$elapsedProperty.Value
-        } else {
-            $null
-        }
-        Source    = if ($null -ne $sourceProperty -and
-                        -not [string]::IsNullOrEmpty([string]$sourceProperty.Value)) {
-            [string]$sourceProperty.Value
-        } else {
-            $null
-        }
-        Children  = $children
+    $order  = if ($null -ne $orderProperty) { [int]$orderProperty.Value } else { 0 }
+    $name   = if ($null -ne $nameProperty) { [string]$nameProperty.Value } else { '' }
+    $status = if ($null -ne $statusProperty) { [string]$statusProperty.Value } else { 'NotStarted' }
+    # elapsedMs is $null until a span is timed; preserve that distinction
+    # rather than coercing an un-run node's null to 0.
+    $elapsed = if ($null -ne $elapsedProperty -and $null -ne $elapsedProperty.Value) {
+        [int64]$elapsedProperty.Value
+    } else {
+        $null
     }
+    $source = if ($null -ne $sourceProperty) { [string]$sourceProperty.Value } else { $null }
+
+    # Rebuild through the single node factory so the imported subtree is the
+    # exact shape the live framework mints (Source normalisation and the
+    # child-list default live there); pass the already-rebuilt children
+    # through as the node's own list.
+    New-TimingSpanNode -Order $order -Name $name -Status $status `
+        -ElapsedMs $elapsed -Source $source -Children $children
 }

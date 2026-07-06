@@ -71,6 +71,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Private\Timing\Add-TimingSpanSkeletonBranch.ps1"
 . "$PSScriptRoot\Private\Timing\ConvertFrom-TimingSpanImportNode.ps1"
 . "$PSScriptRoot\Private\Timing\ConvertTo-TimingSpanExportNode.ps1"
+. "$PSScriptRoot\Private\Timing\New-TimingSpanNode.ps1"
 . "$PSScriptRoot\Private\Timing\Resolve-TimingSpanChildNode.ps1"
 
 # Top-level utilities (no domain grouping yet).
