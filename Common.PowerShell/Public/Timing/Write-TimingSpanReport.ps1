@@ -30,11 +30,13 @@ function Write-TimingSpanReport {
 
     Elapsed vs. roll-up. A row prints the node's own ElapsedMs (a dash when it
     never ran, i.e. a NotStarted/SKIPPED node). Percent-of-parent and the
-    total line instead use an EFFECTIVE elapsed: a node's own ElapsedMs when
-    it was measured, otherwise the sum of its children's effective elapsed.
-    That lets the root - a live container with no ElapsedMs of its own - still
-    yield a meaningful total (the sum of its top-level spans), exactly the
-    "top-level only, no double-count" semantics of the 2-level renderer.
+    total line instead use an EFFECTIVE elapsed: the larger of a node's own
+    measured elapsed and the sum of its children's effective elapsed. That
+    lets the root - a live container with no ElapsedMs of its own - still yield
+    a meaningful total (the sum of its top-level spans), keeps per-child
+    percents at or below 100% even when a grafted child subtree reports more
+    time than the parent's own span, and preserves the "top-level only, no
+    double-count" total semantics of the 2-level renderer.
 
 .PARAMETER Tree
     Either a timing context (from New-TimingSpanTree; its .Root is rendered)
@@ -78,20 +80,25 @@ function Write-TimingSpanReport {
         'Failed'     = '[FAILED] '
     }
 
-    # Effective elapsed: a measured node reports its own ElapsedMs; a container
-    # with none (the root, or any un-measured grouping node) rolls up its
-    # children. Children of a measured node are time INSIDE it, so we never add
-    # them to a parent that already has its own measured total - that is what
-    # keeps percents <= 100% and the total free of double-counting.
+    # Effective elapsed drives the percent denominators and the total. It is
+    # the LARGER of a node's own measured elapsed and the sum of its children's
+    # effective elapsed - never their sum on top of the parent (children run
+    # INSIDE the parent, so adding them would double-count), and never less
+    # than the children it contains. Taking the max matters at the process
+    # boundary: a grafted child subtree (or clock skew) can report more time
+    # than the parent's own measured span, and using the parent's smaller
+    # figure as the denominator would print a per-child percent above 100%.
+    # A container with no measured time of its own (the root, or any pure
+    # grouping node) simply rolls up its children.
     function getEffectiveElapsedMs($node) {
-        if ($null -ne $node.ElapsedMs) {
-            return [int64] $node.ElapsedMs
-        }
-        $sum = [int64] 0
+        $childSum = [int64] 0
         foreach ($child in $node.Children) {
-            $sum += getEffectiveElapsedMs $child
+            $childSum += getEffectiveElapsedMs $child
         }
-        return $sum
+        if ($null -ne $node.ElapsedMs) {
+            return [math]::Max([int64] $node.ElapsedMs, $childSum)
+        }
+        return $childSum
     }
 
     # Flatten the descendants into rows (depth + node + the parent's effective

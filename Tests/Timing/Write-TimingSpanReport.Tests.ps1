@@ -65,6 +65,25 @@ Describe 'Write-TimingSpanReport' {
         @($lines | Where-Object { $_ -match '^      A\.1\.a\s.*\( 50%\)' }).Count | Should -Be 1
     }
 
+    It 'caps percent-of-parent at 100% when a grafted subtree outweighs the parent span' {
+        # The D2 merge grafts a child process's subtree under a part whose own
+        # measured span can be shorter than the child's reported total (clock
+        # skew, or the parent timing only the shell-out wrapper). The child's
+        # share of such a parent must not read above 100%.
+        $root  = New-TimingSpanNode -Order 0 -Name 'run'  -Status 'Running'
+        $part  = New-TimingSpanNode -Order 1 -Name 'part' -Status 'OK' -ElapsedMs 100
+        $child = New-TimingSpanNode -Order 2 -Name 'graft' -Status 'OK' -ElapsedMs 5000
+        $part.Children.Add($child)
+        $root.Children.Add($part)
+
+        $graftLine = @((Get-ReportLines $root) |
+            Where-Object { $_ -match '^    graft\s' })[0]
+
+        # 5000 of an effective parent of max(100, 5000) = 5000 -> exactly 100%,
+        # never the 5000% a raw parent-own denominator would produce.
+        $graftLine | Should -Match '\(100%\)'
+    }
+
     It 'shows a dash and no percent for a SKIPPED node, partial elapsed for FAILED' {
         $lines = Get-ReportLines (New-FourLevelTree)
 
