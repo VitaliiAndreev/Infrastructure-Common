@@ -12,14 +12,15 @@ history and the tag list.
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-07-06
+
 ### Added
 - Timing-tree framework (`New-TimingSpanTree`, `Initialize-TimingSpanTree`,
   `Measure-TimingSpan`, `Add-TimingSpanDuration`) - an arbitrary-depth,
   context-owned nested span model with by-name accumulation and sticky-Failed
   status. Generalises the provisioner's 2-level phase-timing framework so
   timings can nest to any depth and, later in the feature, cross the process
-  boundary. The report renderer and the version bump land in subsequent
-  steps.
+  boundary.
 - `Export-TimingSpanTree` / `Import-TimingSpanTree` - the cross-process
   handoff for the timing tree. Export serialises a context's whole tree to
   the versioned nested-JSON schema (`e2e-timing/v1`; explicit `children[]`,
@@ -34,8 +35,7 @@ history and the tag list.
   `total observed` line for the root. The arbitrary-depth, merge-aware
   counterpart of the provisioner's 2-level `Write-PhaseTimingReport`; a
   `SKIPPED` node shows a dash and no percent, and the total counts the root's
-  effective elapsed (top-level spans, no sub-step double-count). The version
-  bump lands in a subsequent step.
+  effective elapsed (top-level spans, no sub-step double-count).
 - 2-level phase-timing compat shims (`Initialize-PhaseTimings`,
   `Invoke-WithPhaseTimer`, `Invoke-WithSubStepTimer`, `Add-SubStepDuration`,
   `Write-PhaseTimingReport`) - the provisioner's pre-generalisation timing
@@ -45,8 +45,7 @@ history and the tag list.
   the same undeclared-phase / not-initialised conditions and
   `Write-PhaseTimingReport` emits the byte-identical legacy report (fixed
   banner, no percent column, top-level-only total). Lets a consumer migrate to
-  one framework without rewriting call sites; the version bump lands in a
-  subsequent step.
+  one framework without rewriting call sites.
 
 ## [9.0.1] - 2026-06-17
 
@@ -75,7 +74,8 @@ history and the tag list.
   `-RetryableExitCode` set, or throw and use `Invoke-WithRetry` for
   predicate-based classification.
 
-[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...HEAD
+[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.1.0...HEAD
+[9.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...9.1.0
 [9.0.1]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.0...9.0.1
 [9.0.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/8.1.0...9.0.0
 [8.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/8.0.0...8.1.0
