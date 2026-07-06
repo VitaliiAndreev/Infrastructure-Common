@@ -36,6 +36,17 @@ history and the tag list.
   `SKIPPED` node shows a dash and no percent, and the total counts the root's
   effective elapsed (top-level spans, no sub-step double-count). The version
   bump lands in a subsequent step.
+- 2-level phase-timing compat shims (`Initialize-PhaseTimings`,
+  `Invoke-WithPhaseTimer`, `Invoke-WithSubStepTimer`, `Add-SubStepDuration`,
+  `Write-PhaseTimingReport`) - the provisioner's pre-generalisation timing
+  surface, re-expressed as thin wrappers over the timing-tree core and a
+  single module-scoped default context so existing call sites keep their exact
+  signatures (no `-Tree` argument). Behaviour-preserving: the verbs throw on
+  the same undeclared-phase / not-initialised conditions and
+  `Write-PhaseTimingReport` emits the byte-identical legacy report (fixed
+  banner, no percent column, top-level-only total). Lets a consumer migrate to
+  one framework without rewriting call sites; the version bump lands in a
+  subsequent step.
 
 ## [9.0.1] - 2026-06-17
 

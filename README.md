@@ -36,6 +36,7 @@ Shared PowerShell functions and reusable PowerShell centric GitHub composite act
     - [Export-TimingSpanTree](#export-timingspantree)
     - [Import-TimingSpanTree](#import-timingspantree)
     - [Write-TimingSpanReport](#write-timingspanreport)
+    - [2-level compat shims](#2-level-compat-shims)
 - [Reusable CI](#reusable-ci)
 - [Repo structure](#repo-structure)
 
@@ -131,6 +132,13 @@ and one imported from a child process) coexist in one process.
   seconds, and its percent of the parent's elapsed, closed by a
   `total observed` line for the root. The arbitrary-depth, merge-aware
   counterpart of the provisioner's 2-level phase-timing report.
+- **2-level compat shims** (`Initialize-PhaseTimings`, `Invoke-WithPhaseTimer`,
+  `Invoke-WithSubStepTimer`, `Add-SubStepDuration`, `Write-PhaseTimingReport`) -
+  the pre-generalisation phase/sub-step surface, re-expressed as thin wrappers
+  over the core and one module-scoped default context so existing call sites
+  keep their exact signatures (no `-Tree`). Behaviour-preserving: same
+  throw-on-undeclared-phase contract and a byte-identical legacy console
+  report.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see
@@ -717,6 +725,37 @@ if ($null -ne $subtree) { <graft $subtree.Children under the part span> }
 
 ---
 
+#### 2-level compat shims
+
+The pre-generalisation phase/sub-step verbs, re-expressed as thin wrappers over
+the core above. They share one module-scoped default context (created by
+`Initialize-PhaseTimings`), so callers keep the exact 2-level signatures - no
+`-Tree` argument to thread. Prefer the context-explicit core verbs for new
+code; these exist to migrate existing call sites to one framework without a
+rewrite, and their behaviour is byte-for-byte the pre-generalisation surface.
+
+| Shim | Maps to | Notes |
+|---|---|---|
+| `Initialize-PhaseTimings -Phases` | `New-TimingSpanTree` + `Initialize-TimingSpanTree` | Re-declares the default context. `-Phases` items are a phase name string or `@{ Name; SubSteps }`; a fresh call clears prior state. |
+| `Invoke-WithPhaseTimer -Name -Action` | `Measure-TimingSpan` (depth-1) | Throws if the phase was not declared via `Initialize-PhaseTimings` (a typo fails loudly rather than lazily appearing). |
+| `Invoke-WithSubStepTimer -Parent -Name -Action` | `Add-SubStepDuration` (stopwatch wrapper) | Times a sub-step under the named parent phase; accumulates across calls (per-VM loop), sticky-`Failed`. |
+| `Add-SubStepDuration -Parent -Name -ElapsedMs [-Failed]` | `Resolve-TimingSpanChildNode` + accumulate | Measure-less: folds a pre-measured elapsed under a sub-step of the named parent phase. Throws if the parent was not declared. |
+| `Write-PhaseTimingReport` | (legacy renderer over the default context) | Emits the byte-identical 2-level report: fixed banner, sub-steps indented two spaces, top-level-only total. Use `Write-TimingSpanReport` for the arbitrary-depth, percent-aware report. |
+
+```powershell
+Initialize-PhaseTimings -Phases @(
+    'Acquire',
+    @{ Name = 'Post-provisioning'; SubSteps = @('cloud-init wait', 'files') }
+)
+Invoke-WithPhaseTimer -Name 'Acquire' -Action { Start-VmAcquisition }
+Invoke-WithPhaseTimer -Name 'Post-provisioning' -Action {
+    Invoke-WithSubStepTimer -Parent 'Post-provisioning' -Name 'cloud-init wait' -Action { Wait-CloudInit }
+}
+Write-PhaseTimingReport   # called from an outer finally so it prints on failure too
+```
+
+---
+
 ## Reusable CI
 
 The composite actions under `.github/actions/` and the reusable workflows
@@ -784,13 +823,19 @@ Common-PowerShell/
 |  |  |     |- New-CustomBackoffStrategy.ps1
 |  |  |     |- New-ExponentialBackoffStrategy.ps1
 |  |  |     `- New-LinearBackoffStrategy.ps1
-|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation + JSON handoff)
+|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation + JSON handoff + renderer + 2-level compat shims)
 |  |     |- New-TimingSpanTree.ps1
 |  |     |- Initialize-TimingSpanTree.ps1
 |  |     |- Measure-TimingSpan.ps1
 |  |     |- Add-TimingSpanDuration.ps1
 |  |     |- Export-TimingSpanTree.ps1
-|  |     `- Import-TimingSpanTree.ps1
+|  |     |- Import-TimingSpanTree.ps1
+|  |     |- Write-TimingSpanReport.ps1
+|  |     |- Initialize-PhaseTimings.ps1      # 2-level compat shim (default context)
+|  |     |- Invoke-WithPhaseTimer.ps1        # 2-level compat shim
+|  |     |- Invoke-WithSubStepTimer.ps1      # 2-level compat shim
+|  |     |- Add-SubStepDuration.ps1          # 2-level compat shim
+|  |     `- Write-PhaseTimingReport.ps1      # 2-level compat shim (legacy report)
 |  |- Common.PowerShell.psm1        # Dot-sources Public\ (recursively); exports Public functions
 |  `- Common.PowerShell.psd1        # Module manifest (version, GUID, exports)
 |- Tests/                               # One .Tests.ps1 per Public\ fn, mirroring its layout (Retry\, ...)

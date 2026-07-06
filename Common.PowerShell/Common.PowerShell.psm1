@@ -49,6 +49,12 @@
       single-colour console block (status tag, F2 seconds, percent-of-parent,
       and a total line for the root) - the arbitrary-depth, merge-aware
       counterpart of the 2-level Write-PhaseTimingReport.
+    - Initialize-PhaseTimings / Invoke-WithPhaseTimer / Invoke-WithSubStepTimer
+      / Add-SubStepDuration / Write-PhaseTimingReport: the 2-level compat
+      verbs, re-expressed as thin shims over the timing-tree core and a single
+      module-scoped default context. They keep the pre-generalisation
+      signatures (no -Tree argument) and byte-identical console report so
+      existing call sites migrate to one framework without behaviour change.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -102,12 +108,21 @@ $ErrorActionPreference = 'Stop'
 
 # Timing tree - the N-level span framework (nested model + accumulation +
 # cross-process JSON export/import + the depth-indented console renderer).
+# The 2-level compat verbs (Add-SubStepDuration, Initialize-PhaseTimings,
+# Invoke-WithPhaseTimer, Invoke-WithSubStepTimer, Write-PhaseTimingReport)
+# are thin shims over this core, sharing one module-scoped default context;
+# they preserve the pre-generalisation surface for existing call sites.
+. "$PSScriptRoot\Public\Timing\Add-SubStepDuration.ps1"
 . "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
 . "$PSScriptRoot\Public\Timing\Export-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Import-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Initialize-PhaseTimings.ps1"
 . "$PSScriptRoot\Public\Timing\Initialize-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Invoke-WithPhaseTimer.ps1"
+. "$PSScriptRoot\Public\Timing\Invoke-WithSubStepTimer.ps1"
 . "$PSScriptRoot\Public\Timing\Measure-TimingSpan.ps1"
 . "$PSScriptRoot\Public\Timing\New-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Write-PhaseTimingReport.ps1"
 . "$PSScriptRoot\Public\Timing\Write-TimingSpanReport.ps1"
 
 # Export-ModuleMember controls what is actually callable after Import-Module.
@@ -133,10 +148,15 @@ Export-ModuleMember -Function `
     New-ExponentialBackoffStrategy, `
     New-LinearBackoffStrategy, `
     `
+    Add-SubStepDuration, `
     Add-TimingSpanDuration, `
     Export-TimingSpanTree, `
     Import-TimingSpanTree, `
+    Initialize-PhaseTimings, `
     Initialize-TimingSpanTree, `
+    Invoke-WithPhaseTimer, `
+    Invoke-WithSubStepTimer, `
     Measure-TimingSpan, `
     New-TimingSpanTree, `
+    Write-PhaseTimingReport, `
     Write-TimingSpanReport

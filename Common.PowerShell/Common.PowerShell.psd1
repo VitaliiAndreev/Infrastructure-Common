@@ -37,7 +37,13 @@
         'Initialize-TimingSpanTree',
         'Measure-TimingSpan',
         'New-TimingSpanTree',
-        'Write-TimingSpanReport'
+        'Write-TimingSpanReport',
+        # Timing tree - 2-level compat shims (Public/Timing/)
+        'Add-SubStepDuration',
+        'Initialize-PhaseTimings',
+        'Invoke-WithPhaseTimer',
+        'Invoke-WithSubStepTimer',
+        'Write-PhaseTimingReport'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()
