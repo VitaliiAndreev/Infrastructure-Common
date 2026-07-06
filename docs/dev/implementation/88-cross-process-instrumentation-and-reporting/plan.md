@@ -13,16 +13,16 @@ ordered, committable steps only. Steps do not repeat context already in
   - [A3. N-level console report renderer](#a3-n-level-console-report-renderer)
   - [A4. Re-express the 2-level verbs as shims](#a4-re-express-the-2-level-verbs-as-shims)
   - [A5. Version gate + consumer pins](#a5-version-gate--consumer-pins)
-- [Section B - Provisioner emits its tree (Vm-Provisioner)](#section-b---provisioner-emits-its-tree-vm-provisioner)
+- [Section B - Provisioner consumes the shared module (Vm-Provisioner)](#section-b---provisioner-consumes-the-shared-module-vm-provisioner)
   - [B1. Consume the shared module (drop local timing copies)](#b1-consume-the-shared-module-drop-local-timing-copies)
-  - [B2. Export tree on the env-var opt-in](#b2-export-tree-on-the-env-var-opt-in)
-- [Section C - GitHubRunners emits its tree (GitHubRunners)](#section-c---githubrunners-emits-its-tree-githubrunners)
-  - [C1. Instrument + export register/deregister-runners.ps1](#c1-instrument--export-registerderegister-runnersps1)
-- [Section D - E2E orchestration + merge + report (Infrastructure-E2E)](#section-d---e2e-orchestration--merge--report-infrastructure-e2e)
-  - [D1. Instrument the runner-lifecycle tree](#d1-instrument-the-runner-lifecycle-tree)
-  - [D2. Graft child-process trees under their parts](#d2-graft-child-process-trees-under-their-parts)
-  - [D3. Emit report + rolling JSON artifact with retention](#d3-emit-report--rolling-json-artifact-with-retention)
-  - [D4. README](#d4-readme)
+- [Section C - E2E orchestration + merge + report (Infrastructure-E2E)](#section-c---e2e-orchestration--merge--report-infrastructure-e2e)
+  - [C1. Instrument the runner-lifecycle tree](#c1-instrument-the-runner-lifecycle-tree)
+  - [C2. Graft child-process trees under their parts](#c2-graft-child-process-trees-under-their-parts)
+  - [C3. Emit report + rolling JSON artifact with retention](#c3-emit-report--rolling-json-artifact-with-retention)
+  - [C4. README](#c4-readme)
+- [Section D - Child-process depth emitters](#section-d---child-process-depth-emitters)
+  - [D1. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
+  - [D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d2-instrument--export-registerderegister-runnersps1-githubrunners)
 - [Section E - Bash depth tier (last)](#section-e---bash-depth-tier-last)
   - [E1. Bash timing emitter + wire into the bash flows](#e1-bash-timing-emitter--wire-into-the-bash-flows)
 - [Cross-process data flow (whole feature)](#cross-process-data-flow-whole-feature)
@@ -237,7 +237,10 @@ manifest-wiring convention), so this step is the release gate: bump
 `ModuleVersion`, promote the accumulated `[Unreleased]` `CHANGELOG` entry to
 the new version + date, and update the `RequiredModules` pins in every
 consumer that imports the new surface. See the export-intersection and
-version-bump gotchas noted in memory.
+version-bump gotchas noted in memory. No current cross-repo consumer imports
+the new timing surface (the Section B/C/D consumers are wired in later steps
+and bump their own pin as they start consuming), so the pin update here is a
+no-op; the version + CHANGELOG promotion is what satisfies the release gate.
 
 **Why.** The release CI gate (`check-version-is-new` + assert-changelog) in
 `release.yml` / `release-tail.yml` fails a `ModuleVersion` bump without a
@@ -258,16 +261,25 @@ flowchart LR
   gate --> ok["release CI green"]
 ```
 
-## Section B - Provisioner emits its tree (Vm-Provisioner)
+## Section B - Provisioner consumes the shared module (Vm-Provisioner)
+
+The provisioner's SSOT migration onto the shared module. Independent of the
+E2E work and the first live exercise of the A4 shims, so it lands ahead of
+Section C ([sequencing rationale](problem.md#resolved-decisions)).
 
 ### B1. Consume the shared module (drop local timing copies)
 
 **What.** Replace the five `up/timing/*` dot-sources in `provision.ps1`
 with the `Common.PowerShell` import (already present) and delete the local
-timing files, making the shared module the single source of truth.
+timing files, making the shared module the single source of truth. Raise the
+provisioner's `Common.PowerShell` minimum-version floor to `9.1.0` (the
+release A5 shipped the compat shims in) so the import resolves the shim
+surface `provision.ps1` calls.
 
 **Why.** SSOT: two copies of the framework would drift. `provision.ps1`
-already imports `Common.PowerShell`, so this is a delete + path change.
+already imports `Common.PowerShell`, so this is a delete + path change. It is
+also the first live exercise of the A4 shims, confirming the re-expressed
+2-level verbs behave byte-for-byte in a real consumer.
 
 **Tests**: provisioner PowerShell suite green (timing behaviour unchanged);
 a provision dry-run still prints the same phase report.
@@ -278,70 +290,24 @@ flowchart LR
   mod["Common.PowerShell (shims + core)"] --> provision
 ```
 
-### B2. Export tree on the env-var opt-in
+## Section C - E2E orchestration + merge + report (Infrastructure-E2E)
 
-**What.** At the end of `provision.ps1`'s outer `try/finally` (where
-`Write-PhaseTimingReport` already runs), when
-`$env:TIMING_TREE_OUTPUT_PATH` is set, also call `Export-TimingSpanTree` to
-that path - on success AND failure. When unset, behaviour is unchanged
-(console report only). Neutral variable name; the script does not know who
-consumes it. See
-[cross-process handoff](problem.md#resolved-decisions).
+Built ahead of the Section D emitters. The graft is defensive, so the report
+ships complete with each shell-out part as a single opaque span and the
+Section D emitters later deepen parts that already render. This gets the
+deliverable - the report and rolling artifact - out first and validates the
+schema against a real orchestration
+([sequencing rationale](problem.md#resolved-decisions)).
 
-**Why.** This is the child half of the process-boundary bridge, kept
-test-agnostic (production stays E2E-unaware, per memory).
-
-**Tests** (unit): with the env var set, provision writes a schema-valid
-JSON at the path; the failure path still writes; with the env var unset, no
-file is written and the console report is unchanged.
-
-```mermaid
-sequenceDiagram
-  participant Prov as provision.ps1
-  participant Env as $env:TIMING_TREE_OUTPUT_PATH
-  Prov->>Prov: Write-PhaseTimingReport (always)
-  Prov->>Env: read
-  alt set
-    Prov->>Prov: Export-TimingSpanTree -Path $Env
-  else unset
-    Prov->>Prov: no export (unchanged)
-  end
-```
-
-## Section C - GitHubRunners emits its tree (GitHubRunners)
-
-### C1. Instrument + export register/deregister-runners.ps1
-
-**What.** Wrap the meaningful stages of `register-runners.ps1` (and
-`deregister-runners.ps1`) in `Invoke-WithPhaseTimer`/`Invoke-WithSubStepTimer`
-(or the core verbs) via the shared module, and export on the same
-`TIMING_TREE_OUTPUT_PATH` opt-in as B2.
-
-**Why.** Runner registration is a distinct phase of the E2E run and a
-plausible time sink ([What we want](problem.md#what-we-want)); without this
-it stays an opaque single part.
-
-**Tests** (unit): stages recorded under the expected names; export written
-when the env var is set; unset path unchanged.
-
-```mermaid
-flowchart TD
-  reg["register-runners.ps1"] --> t1["prefetch tarball"]
-  reg --> t2["config.sh (register)"]
-  reg --> t3["svc.sh (install+start)"]
-  reg -->|opt-in| json["tree.json"]
-```
-
-## Section D - E2E orchestration + merge + report (Infrastructure-E2E)
-
-### D1. Instrument the runner-lifecycle tree
+### C1. Instrument the runner-lifecycle tree
 
 **What.** In `Invoke-RunnerLifecycleTest` and the functions it calls
 (`Invoke-RunnerLifecycleSetup`, `Invoke-VmUsersSetup`, the phase 2/3 and
 assertion helpers, teardown), create the run context and wrap each phase
 and part with `Measure-TimingSpan`. Thread the context (not a global) down
 the call tree. Parts that shell out (provision/register/users) are wrapped
-as one span here; their internals arrive via D2.
+as one span here; C2 grafts their internals once the Section D emitters
+export them.
 
 **Why.** This produces the phase/part breakdown that is the whole point
 ([Summary](problem.md#summary)).
@@ -363,13 +329,15 @@ flowchart TD
   setup --> users["reconcile users (shell-out span)"]
 ```
 
-### D2. Graft child-process trees under their parts
+### C2. Graft child-process trees under their parts
 
 **What.** For each shell-out part, set `TIMING_TREE_OUTPUT_PATH` to a fresh
 per-invocation temp file before the call, and after it returns
 `Import-TimingSpanTree` and attach the imported subtree as the children of
 that part's span; delete the temp file. Missing/corrupt child JSON leaves
-the part timed with no children (graceful, per A2).
+the part timed with no children (graceful, per A2) - which is exactly the
+state until the Section D emitters land, so this step is correct on its own
+and each part deepens as its emitter ships.
 
 **Why.** This is the "full depth" join
 ([What we want](problem.md#what-we-want)) - it turns an opaque 8-minute
@@ -392,7 +360,7 @@ sequenceDiagram
   E2E->>E2E: graft subtree under part; delete temp
 ```
 
-### D3. Emit report + rolling JSON artifact with retention
+### C3. Emit report + rolling JSON artifact with retention
 
 **What.** In the run's outer `finally` (so it fires on success, failure,
 and best-effort-cleanup paths): call `Write-TimingSpanReport` for the
@@ -417,7 +385,7 @@ flowchart TD
   exp --> prune["Limit-RetainedItem -MaxItems N -FileOnly"]
 ```
 
-### D4. README
+### C4. README
 
 **What.** Document the timing report and artifact in the E2E README (what
 it shows, where the JSON lands, the retention knob, the
@@ -430,6 +398,69 @@ it shows, where the JSON lands, the retention knob, the
 ```mermaid
 flowchart LR
   feat["timing feature"] --> readme["README: Timing report section + index entry"]
+```
+
+## Section D - Child-process depth emitters
+
+These populate the child exports that Section C's graft (C2) already imports,
+turning each opaque shell-out part into its internal breakdown. Each is the
+child half of the neutral `TIMING_TREE_OUTPUT_PATH` opt-in and stays
+test-agnostic (production stays E2E-unaware, per memory). Each consuming step
+also bumps its repo's `Common.PowerShell` minimum-version pin to the surface
+it needs, per the A5 convention.
+
+### D1. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)
+
+**What.** At the end of `provision.ps1`'s outer `try/finally` (where
+`Write-PhaseTimingReport` already runs), when
+`$env:TIMING_TREE_OUTPUT_PATH` is set, also call `Export-TimingSpanTree` to
+that path - on success AND failure. When unset, behaviour is unchanged
+(console report only). Neutral variable name; the script does not know who
+consumes it. See
+[cross-process handoff](problem.md#resolved-decisions).
+
+**Why.** This is the child half of the process-boundary bridge whose parent
+half (C2) already imports and grafts; it is what finally populates the
+provisioning part's subtree. Kept test-agnostic (production stays E2E-unaware,
+per memory).
+
+**Tests** (unit): with the env var set, provision writes a schema-valid
+JSON at the path; the failure path still writes; with the env var unset, no
+file is written and the console report is unchanged.
+
+```mermaid
+sequenceDiagram
+  participant Prov as provision.ps1
+  participant Env as $env:TIMING_TREE_OUTPUT_PATH
+  Prov->>Prov: Write-PhaseTimingReport (always)
+  Prov->>Env: read
+  alt set
+    Prov->>Prov: Export-TimingSpanTree -Path $Env
+  else unset
+    Prov->>Prov: no export (unchanged)
+  end
+```
+
+### D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)
+
+**What.** Wrap the meaningful stages of `register-runners.ps1` (and
+`deregister-runners.ps1`) in `Invoke-WithPhaseTimer`/`Invoke-WithSubStepTimer`
+(or the core verbs) via the shared module, and export on the same
+`TIMING_TREE_OUTPUT_PATH` opt-in as D1.
+
+**Why.** Runner registration is a distinct phase of the E2E run and a
+plausible time sink ([What we want](problem.md#what-we-want)); without this
+it stays an opaque single part.
+
+**Tests** (unit): stages recorded under the expected names; export written
+when the env var is set; unset path unchanged.
+
+```mermaid
+flowchart TD
+  reg["register-runners.ps1"] --> t1["prefetch tarball"]
+  reg --> t2["config.sh (register)"]
+  reg --> t3["svc.sh (install+start)"]
+  reg -->|opt-in| json["tree.json"]
 ```
 
 ## Section E - Bash depth tier (last)
@@ -453,7 +484,7 @@ the env var unset behaves exactly as today (no file, no output change).
 flowchart TD
   sh["register-runners.sh"] --> emit["timing.sh: span begin/end"]
   emit --> json["tree.json (schema v1)"]
-  json -->|imported by D2| e2e["E2E part subtree"]
+  json -->|imported by C2| e2e["E2E part subtree"]
 ```
 
 ## Cross-process data flow (whole feature)
@@ -462,13 +493,13 @@ flowchart TD
 flowchart TD
   subgraph E2E["Infrastructure-E2E (parent process)"]
     ctx["run context (nested tree)"]
-    merge["Import + graft (D2)"]
-    report["report + rolling JSON (D3)"]
+    merge["Import + graft (C2)"]
+    report["report + rolling JSON (C3)"]
   end
   subgraph Children["child processes (opt-in via TIMING_TREE_OUTPUT_PATH)"]
-    prov["provision.ps1 (B)"]
-    reg["register-runners.ps1 (C)"]
-    bash["bash flows (E)"]
+    prov["provision.ps1 (D1)"]
+    reg["register-runners.ps1 (D2)"]
+    bash["bash flows (E1)"]
   end
   subgraph Shared["Common.PowerShell (A)"]
     core["core + export/import + renderer"]

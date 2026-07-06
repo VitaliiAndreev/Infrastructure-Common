@@ -154,6 +154,16 @@ scope here.
   initially. A tiny bash emitter that contributes sub-step depth in the
   same nested JSON schema lands as a later step, sequenced last in
   `plan.md`.
+- **E2E parent before child emitters (walking skeleton).** The E2E
+  orchestrator - instrument, graft, report + rolling artifact - is built
+  before the child-process depth emitters. The graft is defensive (a missing
+  child export leaves a part with no children, never an error), so the report
+  ships complete with each shell-out as a single opaque span and every emitter
+  then deepens a part that already renders. This gets the deliverable - the
+  report - out soonest and validates the schema against a real orchestration
+  before emitter code spreads across repos. The provisioner's migration onto
+  the shared module is independent SSOT cleanup and stays early, ahead of the
+  E2E work.
 - **Artifact location (confirmed).** The rolling JSON artifact lives in a
   `timing/` folder under the run's existing diagnostics root, next to
   `runtime-diag.log` / `console.log`, so all artifacts for a run stay
