@@ -28,6 +28,15 @@ Shared PowerShell functions and reusable PowerShell centric GitHub composite act
       - [New-LinearBackoffStrategy](#new-linearbackoffstrategy)
       - [New-ConstantBackoffStrategy](#new-constantbackoffstrategy)
       - [New-CustomBackoffStrategy](#new-custombackoffstrategy)
+  - Timing tree (`Public/Timing/`)
+    - [New-TimingSpanTree](#new-timingspantree)
+    - [Initialize-TimingSpanTree](#initialize-timingspantree)
+    - [Measure-TimingSpan](#measure-timingspan)
+    - [Add-TimingSpanDuration](#add-timingspanduration)
+    - [Export-TimingSpanTree](#export-timingspantree)
+    - [Import-TimingSpanTree](#import-timingspantree)
+    - [Write-TimingSpanReport](#write-timingspanreport)
+    - [2-level compat shims](#2-level-compat-shims)
 - [Reusable CI](#reusable-ci)
 - [Repo structure](#repo-structure)
 
@@ -97,6 +106,39 @@ folder stays small as more factories land:
     when the failure has a known fixed recovery window.
   - **`New-CustomBackoffStrategy`** - wraps a caller-supplied
     `GetDelay` script block in the standard hashtable shape.
+
+**Timing tree (`Public/Timing/`)** - an arbitrary-depth instrumentation
+framework: a context object owns a nested span tree so timings can nest to
+any depth and cross a process boundary as JSON. A context, rather
+than a module-scoped global, lets two trees (e.g. an orchestrator's own tree
+and one imported from a child process) coexist in one process.
+
+- **`New-TimingSpanTree`** - creates the root node and returns the context
+  that owns the tree and its current-node stack.
+- **`Initialize-TimingSpanTree`** - optionally pre-declares a nested skeleton
+  so branches that never run still render (as `SKIPPED`) instead of vanishing.
+- **`Measure-TimingSpan`** - times a script block as a span under the current
+  node; accumulates by name-within-parent, marks terminal status
+  (`OK`/`Failed`, sticky-Failed), and lets exceptions propagate unchanged.
+- **`Add-TimingSpanDuration`** - the measure-less counterpart for callers that
+  already have an elapsed value to fold in.
+- **`Export-TimingSpanTree`** / **`Import-TimingSpanTree`** - the cross-process
+  handoff: Export serialises a tree to the versioned nested-JSON schema
+  (`e2e-timing/v1`); Import rebuilds it defensively (missing/malformed ->
+  `$null` + warning, never throws) so a parent can graft a child's timings.
+- **`Write-TimingSpanReport`** - renders a context (or a bare node subtree) as
+  a depth-indented, single-colour console block: per span a fixed-width
+  `[OK]`/`[FAILED]`/`[SKIPPED]`/`[RUNNING]` tag, invariant-culture `F2`
+  seconds, and its percent of the parent's elapsed, closed by a
+  `total observed` line for the root. The arbitrary-depth, merge-aware
+  counterpart of the provisioner's 2-level phase-timing report.
+- **2-level compat shims** (`Initialize-PhaseTimings`, `Invoke-WithPhaseTimer`,
+  `Invoke-WithSubStepTimer`, `Add-SubStepDuration`, `Write-PhaseTimingReport`) -
+  the pre-generalisation phase/sub-step surface, re-expressed as thin wrappers
+  over the core and one module-scoped default context so existing call sites
+  keep their exact signatures (no `-Tree`). Behaviour-preserving: same
+  throw-on-undeclared-phase contract and a byte-identical legacy console
+  report.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see
@@ -552,6 +594,168 @@ $jittered = New-CustomBackoffStrategy -Name 'JitteredExponential' `
 
 ---
 
+### Timing tree (`Public/Timing/`)
+
+An arbitrary-depth timing framework. Every span is a node
+`{ Order; Name; Status; ElapsedMs; Source; Children }`; a *context* object
+owns the root node plus a current-node stack, so spans nest simply by running
+one `Measure-TimingSpan` inside another. Accumulation is by name-within-parent
+(a span run once per VM sums into one node), and `Failed` is sticky (a later
+success does not clear an earlier failure). The framework only observes:
+exceptions propagate unchanged, so wrapping existing control flow never alters
+it.
+
+#### `New-TimingSpanTree`
+
+Creates the root node and returns the context every other timing verb
+operates on. The context is `{ Root; Stack; NextOrder }`, with the stack
+seeded by the root so the first span attaches as a top-level child.
+
+| Parameter    | Type   | Required | Description                                                     |
+|--------------|--------|----------|-----------------------------------------------------------------|
+| `-RootName`  | string | Yes      | Display name of the root node; the report's total line.         |
+| `-Source`    | string | No       | Optional provenance tag for the root, carried through the merge.|
+
+```powershell
+$tree = New-TimingSpanTree -RootName 'runner-lifecycle'
+```
+
+---
+
+#### `Initialize-TimingSpanTree`
+
+Optionally pre-declares a nested skeleton under the root so conditionally-run
+branches are visibly accounted for (rendered `SKIPPED`) instead of being
+absent. Pre-declaration is optional - any span first seen via
+`Measure-TimingSpan` / `Add-TimingSpanDuration` is created lazily anyway.
+
+| Parameter   | Type       | Required | Description                                                              |
+|-------------|------------|----------|--------------------------------------------------------------------------|
+| `-Tree`     | context    | Yes      | The context from `New-TimingSpanTree`.                                    |
+| `-Skeleton` | object[]   | Yes      | Nested declaration: plain strings and/or `@{ Name; Children; Source }`.  |
+
+```powershell
+Initialize-TimingSpanTree -Tree $tree -Skeleton @(
+    'Setup',
+    @{ Name = 'Phase 1'; Children = @('boot VM', 'wait for SSH') },
+    'Teardown'
+)
+```
+
+---
+
+#### `Measure-TimingSpan`
+
+Times `-Action` as a span under the current node: finds-or-creates the node,
+pushes it (so anything the action itself times nests beneath), accumulates the
+elapsed, sets terminal status, and pops on both the success and failure paths.
+The action's output streams back to the caller.
+
+| Parameter | Type        | Required | Description                                              |
+|-----------|-------------|----------|----------------------------------------------------------|
+| `-Tree`   | context     | Yes      | The context from `New-TimingSpanTree`.                   |
+| `-Name`   | string      | Yes      | Span name; unique within the current node's children.    |
+| `-Action` | scriptblock | Yes      | Work to time. Runs as-is; exceptions propagate.          |
+| `-Source` | string      | No       | Provenance tag applied on first creation of the node.    |
+
+```powershell
+Measure-TimingSpan -Tree $tree -Name 'Phase 1' -Action {
+    Measure-TimingSpan -Tree $tree -Name 'boot VM' -Action { Start-Vm }
+}
+```
+
+---
+
+#### `Add-TimingSpanDuration`
+
+The measure-less primitive: folds a pre-measured elapsed value into a span
+under the current node (no scriptblock, so the span is a leaf contribution).
+Same accumulation and sticky-`Failed` semantics as `Measure-TimingSpan`.
+
+| Parameter    | Type    | Required | Description                                             |
+|--------------|---------|----------|---------------------------------------------------------|
+| `-Tree`      | context | Yes      | The context from `New-TimingSpanTree`.                  |
+| `-Name`      | string  | Yes      | Span name; unique within the current node's children.   |
+| `-ElapsedMs` | int64   | Yes      | Milliseconds to add to the span's running total.        |
+| `-Failed`    | switch  | No       | Mark the span `Failed` (sticky) - the work threw.       |
+| `-Source`    | string  | No       | Provenance tag applied on first creation of the node.   |
+
+```powershell
+Add-TimingSpanDuration -Tree $tree -Name 'provider: files' -ElapsedMs 1200
+```
+
+---
+
+#### `Export-TimingSpanTree`
+
+Serialises a context's whole tree to the versioned nested-JSON schema so
+another process can import and graft it. The document is
+`{ "schema": "e2e-timing/v1", "root": { ...node... } }` with camelCase keys,
+explicit `children[]`, first-class `status`, and invariant-culture numbers
+(a subtree graft, not a timestamp trace). The caller owns `-Path`; its parent
+directory must exist.
+
+| Parameter | Type    | Required | Description                                             |
+|-----------|---------|----------|---------------------------------------------------------|
+| `-Tree`   | context | Yes      | The context from `New-TimingSpanTree`.                  |
+| `-Path`   | string  | Yes      | Destination JSON file (typically a per-invocation temp).|
+
+```powershell
+Export-TimingSpanTree -Tree $tree -Path $env:TIMING_TREE_OUTPUT_PATH
+```
+
+---
+
+#### `Import-TimingSpanTree`
+
+Rebuilds a child's export into an in-memory subtree (the same
+`List[object]`-backed node shape the live framework mints) for grafting under
+a part span. Defensive by contract: a missing, empty, malformed, or root-less
+file yields `$null` with a warning and never throws, so a crashed child never
+fails the parent's own end-of-run report.
+
+| Parameter | Type   | Required | Description                                            |
+|-----------|--------|----------|--------------------------------------------------------|
+| `-Path`   | string | Yes      | The JSON file written by `Export-TimingSpanTree`.      |
+
+```powershell
+$subtree = Import-TimingSpanTree -Path $childTempPath
+if ($null -ne $subtree) { <graft $subtree.Children under the part span> }
+```
+
+---
+
+#### 2-level compat shims
+
+The pre-generalisation phase/sub-step verbs, re-expressed as thin wrappers over
+the core above. They share one module-scoped default context (created by
+`Initialize-PhaseTimings`), so callers keep the exact 2-level signatures - no
+`-Tree` argument to thread. Prefer the context-explicit core verbs for new
+code; these exist to migrate existing call sites to one framework without a
+rewrite, and their behaviour is byte-for-byte the pre-generalisation surface.
+
+| Shim | Maps to | Notes |
+|---|---|---|
+| `Initialize-PhaseTimings -Phases` | `New-TimingSpanTree` + `Initialize-TimingSpanTree` | Re-declares the default context. `-Phases` items are a phase name string or `@{ Name; SubSteps }`; a fresh call clears prior state. |
+| `Invoke-WithPhaseTimer -Name -Action` | `Measure-TimingSpan` (depth-1) | Throws if the phase was not declared via `Initialize-PhaseTimings` (a typo fails loudly rather than lazily appearing). |
+| `Invoke-WithSubStepTimer -Parent -Name -Action` | `Add-SubStepDuration` (stopwatch wrapper) | Times a sub-step under the named parent phase; accumulates across calls (per-VM loop), sticky-`Failed`. |
+| `Add-SubStepDuration -Parent -Name -ElapsedMs [-Failed]` | `Resolve-TimingSpanChildNode` + accumulate | Measure-less: folds a pre-measured elapsed under a sub-step of the named parent phase. Throws if the parent was not declared. |
+| `Write-PhaseTimingReport` | (legacy renderer over the default context) | Emits the byte-identical 2-level report: fixed banner, sub-steps indented two spaces, top-level-only total. Use `Write-TimingSpanReport` for the arbitrary-depth, percent-aware report. |
+
+```powershell
+Initialize-PhaseTimings -Phases @(
+    'Acquire',
+    @{ Name = 'Post-provisioning'; SubSteps = @('cloud-init wait', 'files') }
+)
+Invoke-WithPhaseTimer -Name 'Acquire' -Action { Start-VmAcquisition }
+Invoke-WithPhaseTimer -Name 'Post-provisioning' -Action {
+    Invoke-WithSubStepTimer -Parent 'Post-provisioning' -Name 'cloud-init wait' -Action { Wait-CloudInit }
+}
+Write-PhaseTimingReport   # called from an outer finally so it prints on failure too
+```
+
+---
+
 ## Reusable CI
 
 The composite actions under `.github/actions/` and the reusable workflows
@@ -595,23 +799,45 @@ must be a sibling checkout (`..\Common-Automation`):
 Common-PowerShell/
 |- Common.PowerShell/
 |  |- Private/                          # Module-internal helpers (not exported); mirrors Public\ layout
-|  |  `- Retry/
-|  |     `- Assert-RetryStrategyShape.ps1
+|  |  |- Retry/
+|  |  |  `- Assert-RetryStrategyShape.ps1
+|  |  `- Timing/                        # Timing-tree internals (node factory / mint / accumulate / skeleton walk / JSON map)
+|  |     |- New-TimingSpanNode.ps1
+|  |     |- Resolve-TimingSpanChildNode.ps1
+|  |     |- Add-TimingSpanNodeElapsed.ps1
+|  |     |- Add-TimingSpanSkeletonBranch.ps1
+|  |     |- ConvertTo-TimingSpanExportNode.ps1
+|  |     |- ConvertFrom-TimingSpanImportNode.ps1
+|  |     |- Format-TimingSpanElapsed.ps1        # shared elapsed-column authority (both renderers)
+|  |     `- Get-TimingSpanStatusTag.ps1         # shared status -> tag authority (both renderers)
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- ConvertTo-Array.ps1
 |  |  |- Invoke-ModuleInstall.ps1
-|  |  `- Retry/                         # Retry family (loop + strategies)
-|  |     |- Invoke-WithRetry.ps1             # generic retry loop
-|  |     |- TransientErrorStrategies/       # ShouldRetry classifiers
-|  |     |  |- New-FileLockRetryStrategy.ps1
-|  |     |  |- New-TransientNetworkRetryStrategy.ps1
-|  |     |  `- New-TransientPowerShellModuleInstallRetryStrategy.ps1
-|  |     `- BackoffStrategies/              # GetDelay providers
-|  |        |- New-ConstantBackoffStrategy.ps1
-|  |        |- New-CustomBackoffStrategy.ps1
-|  |        |- New-ExponentialBackoffStrategy.ps1
-|  |        `- New-LinearBackoffStrategy.ps1
+|  |  |- Retry/                         # Retry family (loop + strategies)
+|  |  |  |- Invoke-WithRetry.ps1             # generic retry loop
+|  |  |  |- TransientErrorStrategies/       # ShouldRetry classifiers
+|  |  |  |  |- New-FileLockRetryStrategy.ps1
+|  |  |  |  |- New-TransientNetworkRetryStrategy.ps1
+|  |  |  |  `- New-TransientPowerShellModuleInstallRetryStrategy.ps1
+|  |  |  `- BackoffStrategies/              # GetDelay providers
+|  |  |     |- New-ConstantBackoffStrategy.ps1
+|  |  |     |- New-CustomBackoffStrategy.ps1
+|  |  |     |- New-ExponentialBackoffStrategy.ps1
+|  |  |     `- New-LinearBackoffStrategy.ps1
+|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation + JSON handoff + renderer + 2-level compat shims)
+|  |     |- New-TimingSpanTree.ps1
+|  |     |- Initialize-TimingSpanTree.ps1
+|  |     |- Measure-TimingSpan.ps1
+|  |     |- Add-TimingSpanDuration.ps1
+|  |     |- Export-TimingSpanTree.ps1
+|  |     |- Import-TimingSpanTree.ps1
+|  |     |- Write-TimingSpanReport.ps1
+|  |     |- Initialize-PhaseTimings.ps1      # 2-level compat shim (default context)
+|  |     |- Invoke-WithPhaseTimer.ps1        # 2-level compat shim
+|  |     |- Invoke-WithSubStepTimer.ps1      # 2-level compat shim
+|  |     |- Add-SubStepDuration.ps1          # 2-level compat shim
+|  |     `- Write-PhaseTimingReport.ps1      # 2-level compat shim (legacy report)
 |  |- Common.PowerShell.psm1        # Dot-sources Public\ (recursively); exports Public functions
 |  `- Common.PowerShell.psd1        # Module manifest (version, GUID, exports)
 |- Tests/                               # One .Tests.ps1 per Public\ fn, mirroring its layout (Retry\, ...)

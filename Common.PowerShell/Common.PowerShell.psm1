@@ -34,6 +34,27 @@
       Invoke-WithRetry. Custom is the escape hatch for cases the three
       built-ins (exponential / linear / constant) do not cover (HTTP 429
       Retry-After, jittered exponential, ...).
+    - New-TimingSpanTree / Initialize-TimingSpanTree / Measure-TimingSpan /
+      Add-TimingSpanDuration: the arbitrary-depth timing framework. A context
+      object owns a nested span tree (model + accumulation); Measure times a
+      scriptblock as a span under the current node, Add feeds a pre-measured
+      elapsed, Initialize pre-declares a skeleton so un-run branches still
+      render.
+    - Export-TimingSpanTree / Import-TimingSpanTree: the cross-process handoff.
+      Export serialises a tree to the versioned nested-JSON schema
+      ('e2e-timing/v1'); Import rebuilds it defensively (missing/malformed ->
+      $null + warning, never throws) so a parent process can graft a child's
+      timings under its own tree.
+    - Write-TimingSpanReport: renders an N-level tree as a depth-indented,
+      single-colour console block (status tag, F2 seconds, percent-of-parent,
+      and a total line for the root) - the arbitrary-depth, merge-aware
+      counterpart of the 2-level Write-PhaseTimingReport.
+    - Initialize-PhaseTimings / Invoke-WithPhaseTimer / Invoke-WithSubStepTimer
+      / Add-SubStepDuration / Write-PhaseTimingReport: the 2-level compat
+      verbs, re-expressed as thin shims over the timing-tree core and a single
+      module-scoped default context. They keep the pre-generalisation
+      signatures (no -Tree argument) and byte-identical console report so
+      existing call sites migrate to one framework without behaviour change.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -52,6 +73,18 @@ $ErrorActionPreference = 'Stop'
 # Module-internal helpers (not exported). Loaded first so functions
 # dot-sourced from Public\ can rely on them at parse / call time.
 . "$PSScriptRoot\Private\Retry\Assert-RetryStrategyShape.ps1"
+
+# Timing-tree internals - the single node-mint / accumulate / skeleton-walk
+# implementations shared by the Public\Timing\ verbs. Loaded before them so
+# the verbs resolve these at call time.
+. "$PSScriptRoot\Private\Timing\Add-TimingSpanNodeElapsed.ps1"
+. "$PSScriptRoot\Private\Timing\Add-TimingSpanSkeletonBranch.ps1"
+. "$PSScriptRoot\Private\Timing\ConvertFrom-TimingSpanImportNode.ps1"
+. "$PSScriptRoot\Private\Timing\ConvertTo-TimingSpanExportNode.ps1"
+. "$PSScriptRoot\Private\Timing\Format-TimingSpanElapsed.ps1"
+. "$PSScriptRoot\Private\Timing\Get-TimingSpanStatusTag.ps1"
+. "$PSScriptRoot\Private\Timing\New-TimingSpanNode.ps1"
+. "$PSScriptRoot\Private\Timing\Resolve-TimingSpanChildNode.ps1"
 
 # Top-level utilities (no domain grouping yet).
 . "$PSScriptRoot\Public\Assert-RequiredProperties.ps1"
@@ -75,6 +108,25 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Retry\Invoke-WithExitCodeRetry.ps1"
 . "$PSScriptRoot\Public\Retry\Invoke-WithRetry.ps1"
 
+# Timing tree - the N-level span framework (nested model + accumulation +
+# cross-process JSON export/import + the depth-indented console renderer).
+# The 2-level compat verbs (Add-SubStepDuration, Initialize-PhaseTimings,
+# Invoke-WithPhaseTimer, Invoke-WithSubStepTimer, Write-PhaseTimingReport)
+# are thin shims over this core, sharing one module-scoped default context;
+# they preserve the pre-generalisation surface for existing call sites.
+. "$PSScriptRoot\Public\Timing\Add-SubStepDuration.ps1"
+. "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
+. "$PSScriptRoot\Public\Timing\Export-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Import-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Initialize-PhaseTimings.ps1"
+. "$PSScriptRoot\Public\Timing\Initialize-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Invoke-WithPhaseTimer.ps1"
+. "$PSScriptRoot\Public\Timing\Invoke-WithSubStepTimer.ps1"
+. "$PSScriptRoot\Public\Timing\Measure-TimingSpan.ps1"
+. "$PSScriptRoot\Public\Timing\New-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Write-PhaseTimingReport.ps1"
+. "$PSScriptRoot\Public\Timing\Write-TimingSpanReport.ps1"
+
 # Export-ModuleMember controls what is actually callable after Import-Module.
 # It takes precedence over FunctionsToExport in the psd1 at runtime, so both
 # must be kept in sync. FunctionsToExport serves a separate purpose: it is
@@ -96,4 +148,17 @@ Export-ModuleMember -Function `
     New-ConstantBackoffStrategy, `
     New-CustomBackoffStrategy, `
     New-ExponentialBackoffStrategy, `
-    New-LinearBackoffStrategy
+    New-LinearBackoffStrategy, `
+    `
+    Add-SubStepDuration, `
+    Add-TimingSpanDuration, `
+    Export-TimingSpanTree, `
+    Import-TimingSpanTree, `
+    Initialize-PhaseTimings, `
+    Initialize-TimingSpanTree, `
+    Invoke-WithPhaseTimer, `
+    Invoke-WithSubStepTimer, `
+    Measure-TimingSpan, `
+    New-TimingSpanTree, `
+    Write-PhaseTimingReport, `
+    Write-TimingSpanReport

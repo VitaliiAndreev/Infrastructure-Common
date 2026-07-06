@@ -12,6 +12,41 @@ history and the tag list.
 
 ## [Unreleased]
 
+## [9.1.0] - 2026-07-06
+
+### Added
+- Timing-tree framework (`New-TimingSpanTree`, `Initialize-TimingSpanTree`,
+  `Measure-TimingSpan`, `Add-TimingSpanDuration`) - an arbitrary-depth,
+  context-owned nested span model with by-name accumulation and sticky-Failed
+  status. Generalises the provisioner's 2-level phase-timing framework so
+  timings can nest to any depth and, later in the feature, cross the process
+  boundary.
+- `Export-TimingSpanTree` / `Import-TimingSpanTree` - the cross-process
+  handoff for the timing tree. Export serialises a context's whole tree to
+  the versioned nested-JSON schema (`e2e-timing/v1`; explicit `children[]`,
+  first-class `status`, invariant-culture numbers); Import rebuilds it into
+  an in-memory subtree, tolerating a missing or malformed file (returns
+  `$null` with a warning, never throws) so a crashed child never fails the
+  parent's own report.
+- `Write-TimingSpanReport` - renders a timing context or a bare node subtree
+  as a depth-indented, single-colour (`DarkGreen`) console block: per span a
+  fixed-width `[OK]`/`[FAILED]`/`[SKIPPED]`/`[RUNNING]` tag, invariant-culture
+  `F2` seconds, and percent of its parent's effective elapsed, closed by a
+  `total observed` line for the root. The arbitrary-depth, merge-aware
+  counterpart of the provisioner's 2-level `Write-PhaseTimingReport`; a
+  `SKIPPED` node shows a dash and no percent, and the total counts the root's
+  effective elapsed (top-level spans, no sub-step double-count).
+- 2-level phase-timing compat shims (`Initialize-PhaseTimings`,
+  `Invoke-WithPhaseTimer`, `Invoke-WithSubStepTimer`, `Add-SubStepDuration`,
+  `Write-PhaseTimingReport`) - the provisioner's pre-generalisation timing
+  surface, re-expressed as thin wrappers over the timing-tree core and a
+  single module-scoped default context so existing call sites keep their exact
+  signatures (no `-Tree` argument). Behaviour-preserving: the verbs throw on
+  the same undeclared-phase / not-initialised conditions and
+  `Write-PhaseTimingReport` emits the byte-identical legacy report (fixed
+  banner, no percent column, top-level-only total). Lets a consumer migrate to
+  one framework without rewriting call sites.
+
 ## [9.0.1] - 2026-06-17
 
 ### Fixed
@@ -39,7 +74,8 @@ history and the tag list.
   `-RetryableExitCode` set, or throw and use `Invoke-WithRetry` for
   predicate-based classification.
 
-[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...HEAD
+[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.1.0...HEAD
+[9.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...9.1.0
 [9.0.1]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.0...9.0.1
 [9.0.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/8.1.0...9.0.0
 [8.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/8.0.0...8.1.0

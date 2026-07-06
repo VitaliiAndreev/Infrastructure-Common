@@ -1,5 +1,5 @@
 @{
-    ModuleVersion        = '9.0.1'
+    ModuleVersion        = '9.1.0'
     GUID                 = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
     Author               = 'Klark Morrigan'
     Description          = 'Shared PowerShell functions.'
@@ -29,7 +29,21 @@
         'New-ConstantBackoffStrategy',
         'New-CustomBackoffStrategy',
         'New-ExponentialBackoffStrategy',
-        'New-LinearBackoffStrategy'
+        'New-LinearBackoffStrategy',
+        # Timing tree (Public/Timing/)
+        'Add-TimingSpanDuration',
+        'Export-TimingSpanTree',
+        'Import-TimingSpanTree',
+        'Initialize-TimingSpanTree',
+        'Measure-TimingSpan',
+        'New-TimingSpanTree',
+        'Write-TimingSpanReport',
+        # Timing tree - 2-level compat shims (Public/Timing/)
+        'Add-SubStepDuration',
+        'Initialize-PhaseTimings',
+        'Invoke-WithPhaseTimer',
+        'Invoke-WithSubStepTimer',
+        'Write-PhaseTimingReport'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()
