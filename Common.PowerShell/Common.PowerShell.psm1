@@ -40,6 +40,11 @@
       scriptblock as a span under the current node, Add feeds a pre-measured
       elapsed, Initialize pre-declares a skeleton so un-run branches still
       render.
+    - Export-TimingSpanTree / Import-TimingSpanTree: the cross-process handoff.
+      Export serialises a tree to the versioned nested-JSON schema
+      ('e2e-timing/v1'); Import rebuilds it defensively (missing/malformed ->
+      $null + warning, never throws) so a parent process can graft a child's
+      timings under its own tree.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -64,6 +69,8 @@ $ErrorActionPreference = 'Stop'
 # the verbs resolve these at call time.
 . "$PSScriptRoot\Private\Timing\Add-TimingSpanNodeElapsed.ps1"
 . "$PSScriptRoot\Private\Timing\Add-TimingSpanSkeletonBranch.ps1"
+. "$PSScriptRoot\Private\Timing\ConvertFrom-TimingSpanImportNode.ps1"
+. "$PSScriptRoot\Private\Timing\ConvertTo-TimingSpanExportNode.ps1"
 . "$PSScriptRoot\Private\Timing\Resolve-TimingSpanChildNode.ps1"
 
 # Top-level utilities (no domain grouping yet).
@@ -88,10 +95,12 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Retry\Invoke-WithExitCodeRetry.ps1"
 . "$PSScriptRoot\Public\Retry\Invoke-WithRetry.ps1"
 
-# Timing tree - the N-level span framework (nested model + accumulation).
-# The core verbs; JSON export/import and the report renderer are added
-# alongside these as the feature lands.
+# Timing tree - the N-level span framework (nested model + accumulation +
+# cross-process JSON export/import). The report renderer is added alongside
+# these as the feature lands.
 . "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
+. "$PSScriptRoot\Public\Timing\Export-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Import-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Initialize-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Measure-TimingSpan.ps1"
 . "$PSScriptRoot\Public\Timing\New-TimingSpanTree.ps1"
@@ -120,6 +129,8 @@ Export-ModuleMember -Function `
     New-LinearBackoffStrategy, `
     `
     Add-TimingSpanDuration, `
+    Export-TimingSpanTree, `
+    Import-TimingSpanTree, `
     Initialize-TimingSpanTree, `
     Measure-TimingSpan, `
     New-TimingSpanTree

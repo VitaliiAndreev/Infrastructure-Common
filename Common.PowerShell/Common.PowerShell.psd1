@@ -32,6 +32,8 @@
         'New-LinearBackoffStrategy',
         # Timing tree (Public/Timing/)
         'Add-TimingSpanDuration',
+        'Export-TimingSpanTree',
+        'Import-TimingSpanTree',
         'Initialize-TimingSpanTree',
         'Measure-TimingSpan',
         'New-TimingSpanTree'

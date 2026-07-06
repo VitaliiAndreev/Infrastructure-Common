@@ -18,8 +18,15 @@ history and the tag list.
   context-owned nested span model with by-name accumulation and sticky-Failed
   status. Generalises the provisioner's 2-level phase-timing framework so
   timings can nest to any depth and, later in the feature, cross the process
-  boundary. Export/import, the report renderer, and the version bump land in
-  subsequent steps.
+  boundary. The report renderer and the version bump land in subsequent
+  steps.
+- `Export-TimingSpanTree` / `Import-TimingSpanTree` - the cross-process
+  handoff for the timing tree. Export serialises a context's whole tree to
+  the versioned nested-JSON schema (`e2e-timing/v1`; explicit `children[]`,
+  first-class `status`, invariant-culture numbers); Import rebuilds it into
+  an in-memory subtree, tolerating a missing or malformed file (returns
+  `$null` with a warning, never throws) so a crashed child never fails the
+  parent's own report.
 
 ## [9.0.1] - 2026-06-17
 

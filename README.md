@@ -33,6 +33,8 @@ Shared PowerShell functions and reusable PowerShell centric GitHub composite act
     - [Initialize-TimingSpanTree](#initialize-timingspantree)
     - [Measure-TimingSpan](#measure-timingspan)
     - [Add-TimingSpanDuration](#add-timingspanduration)
+    - [Export-TimingSpanTree](#export-timingspantree)
+    - [Import-TimingSpanTree](#import-timingspantree)
 - [Reusable CI](#reusable-ci)
 - [Repo structure](#repo-structure)
 
@@ -105,7 +107,7 @@ folder stays small as more factories land:
 
 **Timing tree (`Public/Timing/`)** - an arbitrary-depth instrumentation
 framework: a context object owns a nested span tree so timings can nest to
-any depth and (later) cross a process boundary as JSON. A context, rather
+any depth and cross a process boundary as JSON. A context, rather
 than a module-scoped global, lets two trees (e.g. an orchestrator's own tree
 and one imported from a child process) coexist in one process.
 
@@ -118,6 +120,10 @@ and one imported from a child process) coexist in one process.
   (`OK`/`Failed`, sticky-Failed), and lets exceptions propagate unchanged.
 - **`Add-TimingSpanDuration`** - the measure-less counterpart for callers that
   already have an elapsed value to fold in.
+- **`Export-TimingSpanTree`** / **`Import-TimingSpanTree`** - the cross-process
+  handoff: Export serialises a tree to the versioned nested-JSON schema
+  (`e2e-timing/v1`); Import rebuilds it defensively (missing/malformed ->
+  `$null` + warning, never throws) so a parent can graft a child's timings.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see
@@ -665,6 +671,45 @@ Add-TimingSpanDuration -Tree $tree -Name 'provider: files' -ElapsedMs 1200
 
 ---
 
+#### `Export-TimingSpanTree`
+
+Serialises a context's whole tree to the versioned nested-JSON schema so
+another process can import and graft it. The document is
+`{ "schema": "e2e-timing/v1", "root": { ...node... } }` with camelCase keys,
+explicit `children[]`, first-class `status`, and invariant-culture numbers
+(a subtree graft, not a timestamp trace). The caller owns `-Path`; its parent
+directory must exist.
+
+| Parameter | Type    | Required | Description                                             |
+|-----------|---------|----------|---------------------------------------------------------|
+| `-Tree`   | context | Yes      | The context from `New-TimingSpanTree`.                  |
+| `-Path`   | string  | Yes      | Destination JSON file (typically a per-invocation temp).|
+
+```powershell
+Export-TimingSpanTree -Tree $tree -Path $env:TIMING_TREE_OUTPUT_PATH
+```
+
+---
+
+#### `Import-TimingSpanTree`
+
+Rebuilds a child's export into an in-memory subtree (the same
+`List[object]`-backed node shape the live framework mints) for grafting under
+a part span. Defensive by contract: a missing, empty, malformed, or root-less
+file yields `$null` with a warning and never throws, so a crashed child never
+fails the parent's own end-of-run report.
+
+| Parameter | Type   | Required | Description                                            |
+|-----------|--------|----------|--------------------------------------------------------|
+| `-Path`   | string | Yes      | The JSON file written by `Export-TimingSpanTree`.      |
+
+```powershell
+$subtree = Import-TimingSpanTree -Path $childTempPath
+if ($null -ne $subtree) { <graft $subtree.Children under the part span> }
+```
+
+---
+
 ## Reusable CI
 
 The composite actions under `.github/actions/` and the reusable workflows
@@ -710,10 +755,12 @@ Common-PowerShell/
 |  |- Private/                          # Module-internal helpers (not exported); mirrors Public\ layout
 |  |  |- Retry/
 |  |  |  `- Assert-RetryStrategyShape.ps1
-|  |  `- Timing/                        # Timing-tree internals (mint / accumulate / skeleton walk)
+|  |  `- Timing/                        # Timing-tree internals (mint / accumulate / skeleton walk / JSON map)
 |  |     |- Resolve-TimingSpanChildNode.ps1
 |  |     |- Add-TimingSpanNodeElapsed.ps1
-|  |     `- Add-TimingSpanSkeletonBranch.ps1
+|  |     |- Add-TimingSpanSkeletonBranch.ps1
+|  |     |- ConvertTo-TimingSpanExportNode.ps1
+|  |     `- ConvertFrom-TimingSpanImportNode.ps1
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- ConvertTo-Array.ps1
@@ -729,11 +776,13 @@ Common-PowerShell/
 |  |  |     |- New-CustomBackoffStrategy.ps1
 |  |  |     |- New-ExponentialBackoffStrategy.ps1
 |  |  |     `- New-LinearBackoffStrategy.ps1
-|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation)
+|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation + JSON handoff)
 |  |     |- New-TimingSpanTree.ps1
 |  |     |- Initialize-TimingSpanTree.ps1
 |  |     |- Measure-TimingSpan.ps1
-|  |     `- Add-TimingSpanDuration.ps1
+|  |     |- Add-TimingSpanDuration.ps1
+|  |     |- Export-TimingSpanTree.ps1
+|  |     `- Import-TimingSpanTree.ps1
 |  |- Common.PowerShell.psm1        # Dot-sources Public\ (recursively); exports Public functions
 |  `- Common.PowerShell.psd1        # Module manifest (version, GUID, exports)
 |- Tests/                               # One .Tests.ps1 per Public\ fn, mirroring its layout (Retry\, ...)
