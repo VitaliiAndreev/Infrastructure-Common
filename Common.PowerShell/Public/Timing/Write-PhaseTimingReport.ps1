@@ -51,15 +51,6 @@ function Write-PhaseTimingReport {
         return
     }
 
-    # Status -> fixed-width tag so the duration column aligns whether the row
-    # passed, failed, is running, or never started.
-    $statusTags = @{
-        'NotStarted' = '[SKIPPED]'
-        'Running'    = '[RUNNING]'
-        'OK'         = '[OK]     '
-        'Failed'     = '[FAILED] '
-    }
-
     # Column widths: account for the sub-step indent so the tag column lines
     # up across mixed top-level and sub-step rows.
     $subStepIndent = '  '
@@ -84,21 +75,13 @@ function Write-PhaseTimingReport {
     # already inside a parent phase; adding it would double-count.
     $totalMs = 0
     foreach ($row in $rows) {
-        $node = $row.Node
-        $tag  = $statusTags[$node.Status]
-        if ($null -eq $node.ElapsedMs) {
-            $duration = '     -    '
-        } else {
-            # Invariant culture so '.' is the decimal separator regardless of
-            # the operator's regional settings; output stays parseable the
-            # same way on every host.
-            $duration = ([string]::Format(
-                [cultureinfo]::InvariantCulture,
-                '{0,8:F2} s',
-                ($node.ElapsedMs / 1000.0)))
-            if (-not $row.IsSubStep) {
-                $totalMs += $node.ElapsedMs
-            }
+        $node     = $row.Node
+        $tag      = Get-TimingSpanStatusTag -Status $node.Status
+        # Shared elapsed-column authority: dash for an un-run row, else F2
+        # seconds. Only top-level phases feed the total (see below).
+        $duration = Format-TimingSpanElapsed -ElapsedMs $node.ElapsedMs
+        if ($null -ne $node.ElapsedMs -and -not $row.IsSubStep) {
+            $totalMs += $node.ElapsedMs
         }
 
         $displayName = if ($row.IsSubStep) {
@@ -113,9 +96,7 @@ function Write-PhaseTimingReport {
     }
 
     Write-Host ('  ' + $divider) -ForegroundColor $color
-    Write-Host ('  total observed: ' + ([string]::Format(
-        [cultureinfo]::InvariantCulture,
-        '{0,8:F2} s',
-        ($totalMs / 1000.0)))) -ForegroundColor $color
+    Write-Host ('  total observed: ' +
+        (Format-TimingSpanElapsed -ElapsedMs $totalMs)) -ForegroundColor $color
     Write-Host $banner -ForegroundColor $color
 }

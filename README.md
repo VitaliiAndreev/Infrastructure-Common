@@ -807,7 +807,9 @@ Common-PowerShell/
 |  |     |- Add-TimingSpanNodeElapsed.ps1
 |  |     |- Add-TimingSpanSkeletonBranch.ps1
 |  |     |- ConvertTo-TimingSpanExportNode.ps1
-|  |     `- ConvertFrom-TimingSpanImportNode.ps1
+|  |     |- ConvertFrom-TimingSpanImportNode.ps1
+|  |     |- Format-TimingSpanElapsed.ps1        # shared elapsed-column authority (both renderers)
+|  |     `- Get-TimingSpanStatusTag.ps1         # shared status -> tag authority (both renderers)
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- ConvertTo-Array.ps1

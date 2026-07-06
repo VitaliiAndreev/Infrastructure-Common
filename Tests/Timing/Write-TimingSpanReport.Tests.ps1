@@ -2,6 +2,8 @@ BeforeAll {
     $timingPrivate = "$PSScriptRoot\..\..\Common.PowerShell\Private\Timing"
     $timingPublic  = "$PSScriptRoot\..\..\Common.PowerShell\Public\Timing"
     . "$timingPrivate\New-TimingSpanNode.ps1"
+    . "$timingPrivate\Format-TimingSpanElapsed.ps1"
+    . "$timingPrivate\Get-TimingSpanStatusTag.ps1"
     . "$timingPublic\Write-TimingSpanReport.ps1"
 
     # A hand-built 4-level tree with exact durations so indent, tags, percent,

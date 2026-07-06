@@ -164,36 +164,70 @@ flowchart TD
 
 ### A4. Re-express the 2-level verbs as shims
 
-**What.** Reimplement the existing verbs (`Initialize-PhaseTimings`,
+**What.** The five 2-level verbs (`Initialize-PhaseTimings`,
 `Invoke-WithPhaseTimer`, `Invoke-WithSubStepTimer`, `Add-SubStepDuration`,
-`Write-PhaseTimingReport`) as thin wrappers over the A1-A3 core, backed by
-a single module-scoped default context so existing call sites keep their
-exact signatures (`-Name`, `-Parent`/`-Name`). `Invoke-WithPhaseTimer` maps
-to a depth-1 span; `Invoke-WithSubStepTimer -Parent P` maps to a depth-2
-span under `P`.
+`Write-PhaseTimingReport`) live in `Common.PowerShell/Public/Timing/` as thin
+wrappers over the A1-A3 core, sharing one module-scoped default context
+(`$script:DefaultPhaseTimingTree`) so call sites keep their exact signatures
+(no `-Tree` argument):
+
+- `Initialize-PhaseTimings -Phases` mints a fresh default context
+  (`New-TimingSpanTree`) and pre-declares it (`Initialize-TimingSpanTree`),
+  translating each `@{ Name; SubSteps }` entry into a skeleton `Children`
+  branch; re-init clears prior state. It keeps the legacy validation messages
+  (empty name / empty sub-step naming the parent).
+- `Invoke-WithPhaseTimer -Name` guards the "phase pre-declared" contract
+  (throws on an unknown top-level name) then delegates to a depth-1
+  `Measure-TimingSpan` on the default context.
+- `Invoke-WithSubStepTimer -Parent P -Name` / `Add-SubStepDuration -Parent P`
+  resolve the sub-step under the phase node named `P` (not the current-node
+  stack), so the legacy "any declared phase is the parent" contract holds
+  regardless of call nesting; `Invoke-WithSubStepTimer` is the stopwatch
+  wrapper over the measure-less `Add-SubStepDuration`.
+- `Write-PhaseTimingReport` renders the default context's 2-level tree in the
+  legacy presentation (fixed `=== Provisioning timing report ===` banner, no
+  percent column, top-level-only total). It is a distinct renderer, not a call
+  to `Write-TimingSpanReport`, because the output must stay byte-identical.
+
+The elapsed-column formatter and the status-tag map are the single authority
+for both renderers, extracted to `Private/Timing/Format-TimingSpanElapsed` and
+`Private/Timing/Get-TimingSpanStatusTag`.
 
 **Why.** Behaviour-preserving migration
 ([Constraints](problem.md#constraints-and-non-goals)): `provision.ps1` and
-its Pester suite must not change behaviour. Shimming, rather than rewriting
-call sites, keeps this step small and low-risk and gives one framework
-under the hood.
+its Pester suite must not change behaviour, and B1 requires the same console
+report. Shimming, rather than rewriting call sites, keeps this step small and
+low-risk and gives one framework under the hood.
 
-**Tests** (unit): the existing `PhaseTimings` unit tests (ported into
-`Common.PowerShell.Tests`) pass unchanged against the shims; a 2-level tree
-built via the old verbs renders identically to the pre-migration output
-(snapshot).
+**Tests** (`Common.PowerShell.Tests`, unit): the ported `PhaseTimings` tests -
+declaration/order, undeclared-phase and not-initialised throws, sub-step
+accumulation, sticky-`Failed`, top-level-only total, and SKIPPED rendering;
+structural checks assert against the default context's tree (the tree-model
+successor of the old flat `$script:PhaseTimings` list). A 2-level tree built
+via the compat verbs renders byte-for-byte as the pre-generalisation report
+(pinned-duration snapshot).
 
 ```mermaid
 flowchart TD
   subgraph shims["Compat verbs (unchanged signatures)"]
+    I["Initialize-PhaseTimings -Phases"]
     P["Invoke-WithPhaseTimer -Name"]
     S["Invoke-WithSubStepTimer -Parent -Name"]
+    A["Add-SubStepDuration -Parent -Name"]
+    W["Write-PhaseTimingReport"]
   end
+  ctx["$script:DefaultPhaseTimingTree"]
   subgraph core["A1-A3 core"]
-    M["Measure-TimingSpan"]
+    NT["New/Initialize-TimingSpanTree"]
+    M["Measure-TimingSpan (depth-1)"]
+    RA["Resolve child under named phase + accumulate"]
   end
-  P -->|depth-1 span| M
-  S -->|depth-2 span under Parent| M
+  fmt["Format-TimingSpanElapsed / Get-TimingSpanStatusTag (shared)"]
+  I --> NT --> ctx
+  P -->|guard pre-declared| M --> ctx
+  S --> A -->|under Parent| RA --> ctx
+  W -->|legacy render| ctx
+  W --> fmt
 ```
 
 ### A5. Version gate + consumer pins

@@ -8,6 +8,8 @@ BeforeAll {
     . "$timingPrivate\Resolve-TimingSpanChildNode.ps1"
     . "$timingPrivate\Add-TimingSpanNodeElapsed.ps1"
     . "$timingPrivate\Add-TimingSpanSkeletonBranch.ps1"
+    . "$timingPrivate\Format-TimingSpanElapsed.ps1"
+    . "$timingPrivate\Get-TimingSpanStatusTag.ps1"
     . "$timingPublic\New-TimingSpanTree.ps1"
     . "$timingPublic\Initialize-TimingSpanTree.ps1"
     . "$timingPublic\Measure-TimingSpan.ps1"

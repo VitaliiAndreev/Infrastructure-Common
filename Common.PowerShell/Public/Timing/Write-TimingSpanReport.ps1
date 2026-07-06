@@ -70,16 +70,6 @@ function Write-TimingSpanReport {
         return
     }
 
-    # Status -> fixed-width tag so the duration column aligns whether a span
-    # passed, failed, is still running, or never started. NotStarted is the
-    # skeleton "declared but never run" state, surfaced as SKIPPED.
-    $statusTags = @{
-        'NotStarted' = '[SKIPPED]'
-        'Running'    = '[RUNNING]'
-        'OK'         = '[OK]     '
-        'Failed'     = '[FAILED] '
-    }
-
     # Effective elapsed drives the percent denominators and the total. It is
     # the LARGER of a node's own measured elapsed and the sum of its children's
     # effective elapsed - never their sum on top of the parent (children run
@@ -99,16 +89,6 @@ function Write-TimingSpanReport {
             return [math]::Max([int64] $node.ElapsedMs, $childSum)
         }
         return $childSum
-    }
-
-    # The one authority for the elapsed column's format: a right-aligned F2
-    # seconds field under invariant culture so '.' is the decimal separator on
-    # every host and the per-row and total lines stay byte-identical in width.
-    function formatSeconds($elapsedMs) {
-        return [string]::Format(
-            [cultureinfo]::InvariantCulture,
-            '{0,8:F2} s',
-            ($elapsedMs / 1000.0))
     }
 
     # Flatten the descendants into rows (depth + node + the parent's effective
@@ -158,16 +138,16 @@ function Write-TimingSpanReport {
 
     foreach ($row in $rows) {
         $node = $row.Node
-        $tag  = $statusTags[$node.Status]
+        $tag  = Get-TimingSpanStatusTag -Status $node.Status
+        # Shared elapsed-column authority: dash for an un-run row, else F2
+        # seconds. The dash and the seconds field are the same width.
+        $duration = Format-TimingSpanElapsed -ElapsedMs $node.ElapsedMs
 
         # A node that never ran (null ElapsedMs, e.g. a SKIPPED skeleton
-        # branch) has no number and no share; show a dash and blank percent.
+        # branch) has no share; blank the percent.
         if ($null -eq $node.ElapsedMs) {
-            $duration = '     -    '
-            $percent  = ''
+            $percent = ''
         } else {
-            $duration = formatSeconds $node.ElapsedMs
-
             # Share of the parent's effective elapsed (captured on the row when
             # the tree was flattened). For a top-level row the parent is the
             # root, whose effective elapsed is the run total.
@@ -193,6 +173,7 @@ function Write-TimingSpanReport {
     # it is never re-added), matching the 2-level report's total semantics.
     Write-Host ('  ' + $divider) -ForegroundColor $color
     Write-Host ('  total observed: ' +
-        (formatSeconds (getEffectiveElapsedMs $root))) -ForegroundColor $color
+        (Format-TimingSpanElapsed -ElapsedMs (getEffectiveElapsedMs $root))) `
+        -ForegroundColor $color
     Write-Host $banner -ForegroundColor $color
 }
