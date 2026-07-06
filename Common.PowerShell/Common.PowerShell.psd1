@@ -29,7 +29,12 @@
         'New-ConstantBackoffStrategy',
         'New-CustomBackoffStrategy',
         'New-ExponentialBackoffStrategy',
-        'New-LinearBackoffStrategy'
+        'New-LinearBackoffStrategy',
+        # Timing tree (Public/Timing/)
+        'Add-TimingSpanDuration',
+        'Initialize-TimingSpanTree',
+        'Measure-TimingSpan',
+        'New-TimingSpanTree'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

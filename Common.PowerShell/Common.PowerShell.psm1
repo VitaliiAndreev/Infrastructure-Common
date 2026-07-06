@@ -34,6 +34,12 @@
       Invoke-WithRetry. Custom is the escape hatch for cases the three
       built-ins (exponential / linear / constant) do not cover (HTTP 429
       Retry-After, jittered exponential, ...).
+    - New-TimingSpanTree / Initialize-TimingSpanTree / Measure-TimingSpan /
+      Add-TimingSpanDuration: the arbitrary-depth timing framework. A context
+      object owns a nested span tree (model + accumulation); Measure times a
+      scriptblock as a span under the current node, Add feeds a pre-measured
+      elapsed, Initialize pre-declares a skeleton so un-run branches still
+      render.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -52,6 +58,13 @@ $ErrorActionPreference = 'Stop'
 # Module-internal helpers (not exported). Loaded first so functions
 # dot-sourced from Public\ can rely on them at parse / call time.
 . "$PSScriptRoot\Private\Retry\Assert-RetryStrategyShape.ps1"
+
+# Timing-tree internals - the single node-mint / accumulate / skeleton-walk
+# implementations shared by the Public\Timing\ verbs. Loaded before them so
+# the verbs resolve these at call time.
+. "$PSScriptRoot\Private\Timing\Add-TimingSpanNodeElapsed.ps1"
+. "$PSScriptRoot\Private\Timing\Add-TimingSpanSkeletonBranch.ps1"
+. "$PSScriptRoot\Private\Timing\Resolve-TimingSpanChildNode.ps1"
 
 # Top-level utilities (no domain grouping yet).
 . "$PSScriptRoot\Public\Assert-RequiredProperties.ps1"
@@ -75,6 +88,14 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Retry\Invoke-WithExitCodeRetry.ps1"
 . "$PSScriptRoot\Public\Retry\Invoke-WithRetry.ps1"
 
+# Timing tree - the N-level span framework (nested model + accumulation).
+# The core verbs; JSON export/import and the report renderer are added
+# alongside these as the feature lands.
+. "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
+. "$PSScriptRoot\Public\Timing\Initialize-TimingSpanTree.ps1"
+. "$PSScriptRoot\Public\Timing\Measure-TimingSpan.ps1"
+. "$PSScriptRoot\Public\Timing\New-TimingSpanTree.ps1"
+
 # Export-ModuleMember controls what is actually callable after Import-Module.
 # It takes precedence over FunctionsToExport in the psd1 at runtime, so both
 # must be kept in sync. FunctionsToExport serves a separate purpose: it is
@@ -96,4 +117,9 @@ Export-ModuleMember -Function `
     New-ConstantBackoffStrategy, `
     New-CustomBackoffStrategy, `
     New-ExponentialBackoffStrategy, `
-    New-LinearBackoffStrategy
+    New-LinearBackoffStrategy, `
+    `
+    Add-TimingSpanDuration, `
+    Initialize-TimingSpanTree, `
+    Measure-TimingSpan, `
+    New-TimingSpanTree

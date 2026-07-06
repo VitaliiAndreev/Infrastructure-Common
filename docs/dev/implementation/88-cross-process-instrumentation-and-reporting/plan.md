@@ -12,7 +12,7 @@ ordered, committable steps only. Steps do not repeat context already in
   - [A2. JSON export / import (cross-process handoff)](#a2-json-export--import-cross-process-handoff)
   - [A3. N-level console report renderer](#a3-n-level-console-report-renderer)
   - [A4. Re-express the 2-level verbs as shims](#a4-re-express-the-2-level-verbs-as-shims)
-  - [A5. Module plumbing + version gate](#a5-module-plumbing--version-gate)
+  - [A5. Version gate + consumer pins](#a5-version-gate--consumer-pins)
 - [Section B - Provisioner emits its tree (Vm-Provisioner)](#section-b---provisioner-emits-its-tree-vm-provisioner)
   - [B1. Consume the shared module (drop local timing copies)](#b1-consume-the-shared-module-drop-local-timing-copies)
   - [B2. Export tree on the env-var opt-in](#b2-export-tree-on-the-env-var-opt-in)
@@ -34,6 +34,13 @@ ordered, committable steps only. Steps do not repeat context already in
   relevant test suite must be green before the step is considered done.
 - New public functions get a neutral, framework-scoped verb-noun name; the
   final names below are proposals settled during execution.
+- Manifest wiring ships with the function. A step that adds a
+  `Common.PowerShell/Public/` function also dot-sources it in the psm1 and
+  lists it (alphabetically) in both `FunctionsToExport` and
+  `Export-ModuleMember`, because the shared `Module.Tests` fails on any
+  un-exported `Public\*.ps1`. The `ModuleVersion` bump, `CHANGELOG`
+  promotion, and consumer `RequiredModules` pins are a separate release
+  gate handled once in A5.
 - Coverage is collected on every PowerShell test run and reported in
   totality and per project, per CLAUDE.md.
 
@@ -64,6 +71,14 @@ Node shape: `{ Order; Name; Status; ElapsedMs; Source; Children }`.
 `Source` is an optional tag (e.g. `provision.ps1`) used later by the merge
 step. Accumulation is by name-within-parent so a step run once per VM sums,
 preserving today's semantics.
+
+The four verbs live under `Common.PowerShell/Public/Timing/` over three
+private helpers in `Private/Timing/` (`Resolve-TimingSpanChildNode` mints
+nodes and assigns `Order`, `Add-TimingSpanNodeElapsed` accumulates + sets
+sticky status, `Add-TimingSpanSkeletonBranch` walks the skeleton) so the
+mint / accumulate / declare mechanics have one implementation each. Per the
+manifest-wiring convention, this step also exports the four verbs; the
+version gate is A5.
 
 **Why.** Arbitrary depth is the core requirement
 ([What we want](problem.md#what-we-want)); everything else builds on this
@@ -181,29 +196,32 @@ flowchart TD
   S -->|depth-2 span under Parent| M
 ```
 
-### A5. Module plumbing + version gate
+### A5. Version gate + consumer pins
 
-**What.** Export the new functions from the `Common.PowerShell` manifest
-(`FunctionsToExport` + `Export-ModuleMember`), bump `ModuleVersion`,
-promote the `CHANGELOG` entry, and update the RequiredModules pins in every
-consumer that will import the new surface. See the export-intersection and
+**What.** The per-function manifest exports already ship with A1-A4 (see the
+manifest-wiring convention), so this step is the release gate: bump
+`ModuleVersion`, promote the accumulated `[Unreleased]` `CHANGELOG` entry to
+the new version + date, and update the `RequiredModules` pins in every
+consumer that imports the new surface. See the export-intersection and
 version-bump gotchas noted in memory.
 
-**Why.** The published-module CI gate fails a `ModuleVersion` bump without a
-matching CHANGELOG promotion + consumer pins
+**Why.** The release CI gate (`check-version-is-new` + assert-changelog) in
+`release.yml` / `release-tail.yml` fails a `ModuleVersion` bump without a
+matching CHANGELOG promotion, and consumers pinning an older version cannot
+resolve the new functions
 ([Constraints](problem.md#constraints-and-non-goals)).
 
-**Tests**: `Module.Tests` (FunctionsToExport intersection callable);
-assert-changelog-version gate green; a smoke import in a clean session
-resolves the new functions.
+**Tests**: assert-changelog-version gate green; a smoke import in a clean
+session resolves the new functions against the pinned version. (`Module.Tests`
+intersection is already green from A1-A4.)
 
 ```mermaid
 flowchart LR
   psd1["Common.PowerShell.psd1
-  FunctionsToExport + ModuleVersion"] --> gate["assert-changelog-version"]
-  changelog["CHANGELOG"] --> gate
+  ModuleVersion bump"] --> gate["check-version-is-new + assert-changelog"]
+  changelog["CHANGELOG [Unreleased] -> version"] --> gate
   pins["consumer RequiredModules pins"] --> gate
-  gate --> ok["CI green"]
+  gate --> ok["release CI green"]
 ```
 
 ## Section B - Provisioner emits its tree (Vm-Provisioner)

@@ -28,6 +28,11 @@ Shared PowerShell functions and reusable PowerShell centric GitHub composite act
       - [New-LinearBackoffStrategy](#new-linearbackoffstrategy)
       - [New-ConstantBackoffStrategy](#new-constantbackoffstrategy)
       - [New-CustomBackoffStrategy](#new-custombackoffstrategy)
+  - Timing tree (`Public/Timing/`)
+    - [New-TimingSpanTree](#new-timingspantree)
+    - [Initialize-TimingSpanTree](#initialize-timingspantree)
+    - [Measure-TimingSpan](#measure-timingspan)
+    - [Add-TimingSpanDuration](#add-timingspanduration)
 - [Reusable CI](#reusable-ci)
 - [Repo structure](#repo-structure)
 
@@ -97,6 +102,22 @@ folder stays small as more factories land:
     when the failure has a known fixed recovery window.
   - **`New-CustomBackoffStrategy`** - wraps a caller-supplied
     `GetDelay` script block in the standard hashtable shape.
+
+**Timing tree (`Public/Timing/`)** - an arbitrary-depth instrumentation
+framework: a context object owns a nested span tree so timings can nest to
+any depth and (later) cross a process boundary as JSON. A context, rather
+than a module-scoped global, lets two trees (e.g. an orchestrator's own tree
+and one imported from a child process) coexist in one process.
+
+- **`New-TimingSpanTree`** - creates the root node and returns the context
+  that owns the tree and its current-node stack.
+- **`Initialize-TimingSpanTree`** - optionally pre-declares a nested skeleton
+  so branches that never run still render (as `SKIPPED`) instead of vanishing.
+- **`Measure-TimingSpan`** - times a script block as a span under the current
+  node; accumulates by name-within-parent, marks terminal status
+  (`OK`/`Failed`, sticky-Failed), and lets exceptions propagate unchanged.
+- **`Add-TimingSpanDuration`** - the measure-less counterpart for callers that
+  already have an elapsed value to fold in.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see
@@ -552,6 +573,98 @@ $jittered = New-CustomBackoffStrategy -Name 'JitteredExponential' `
 
 ---
 
+### Timing tree (`Public/Timing/`)
+
+An arbitrary-depth timing framework. Every span is a node
+`{ Order; Name; Status; ElapsedMs; Source; Children }`; a *context* object
+owns the root node plus a current-node stack, so spans nest simply by running
+one `Measure-TimingSpan` inside another. Accumulation is by name-within-parent
+(a span run once per VM sums into one node), and `Failed` is sticky (a later
+success does not clear an earlier failure). The framework only observes:
+exceptions propagate unchanged, so wrapping existing control flow never alters
+it.
+
+#### `New-TimingSpanTree`
+
+Creates the root node and returns the context every other timing verb
+operates on. The context is `{ Root; Stack; NextOrder }`, with the stack
+seeded by the root so the first span attaches as a top-level child.
+
+| Parameter    | Type   | Required | Description                                                     |
+|--------------|--------|----------|-----------------------------------------------------------------|
+| `-RootName`  | string | Yes      | Display name of the root node; the report's total line.         |
+| `-Source`    | string | No       | Optional provenance tag for the root, carried through the merge.|
+
+```powershell
+$tree = New-TimingSpanTree -RootName 'runner-lifecycle'
+```
+
+---
+
+#### `Initialize-TimingSpanTree`
+
+Optionally pre-declares a nested skeleton under the root so conditionally-run
+branches are visibly accounted for (rendered `SKIPPED`) instead of being
+absent. Pre-declaration is optional - any span first seen via
+`Measure-TimingSpan` / `Add-TimingSpanDuration` is created lazily anyway.
+
+| Parameter   | Type       | Required | Description                                                              |
+|-------------|------------|----------|--------------------------------------------------------------------------|
+| `-Tree`     | context    | Yes      | The context from `New-TimingSpanTree`.                                    |
+| `-Skeleton` | object[]   | Yes      | Nested declaration: plain strings and/or `@{ Name; Children; Source }`.  |
+
+```powershell
+Initialize-TimingSpanTree -Tree $tree -Skeleton @(
+    'Setup',
+    @{ Name = 'Phase 1'; Children = @('boot VM', 'wait for SSH') },
+    'Teardown'
+)
+```
+
+---
+
+#### `Measure-TimingSpan`
+
+Times `-Action` as a span under the current node: finds-or-creates the node,
+pushes it (so anything the action itself times nests beneath), accumulates the
+elapsed, sets terminal status, and pops on both the success and failure paths.
+The action's output streams back to the caller.
+
+| Parameter | Type        | Required | Description                                              |
+|-----------|-------------|----------|----------------------------------------------------------|
+| `-Tree`   | context     | Yes      | The context from `New-TimingSpanTree`.                   |
+| `-Name`   | string      | Yes      | Span name; unique within the current node's children.    |
+| `-Action` | scriptblock | Yes      | Work to time. Runs as-is; exceptions propagate.          |
+| `-Source` | string      | No       | Provenance tag applied on first creation of the node.    |
+
+```powershell
+Measure-TimingSpan -Tree $tree -Name 'Phase 1' -Action {
+    Measure-TimingSpan -Tree $tree -Name 'boot VM' -Action { Start-Vm }
+}
+```
+
+---
+
+#### `Add-TimingSpanDuration`
+
+The measure-less primitive: folds a pre-measured elapsed value into a span
+under the current node (no scriptblock, so the span is a leaf contribution).
+Same accumulation and sticky-`Failed` semantics as `Measure-TimingSpan`.
+
+| Parameter    | Type    | Required | Description                                             |
+|--------------|---------|----------|---------------------------------------------------------|
+| `-Tree`      | context | Yes      | The context from `New-TimingSpanTree`.                  |
+| `-Name`      | string  | Yes      | Span name; unique within the current node's children.   |
+| `-ElapsedMs` | int64   | Yes      | Milliseconds to add to the span's running total.        |
+| `-Failed`    | switch  | No       | Mark the span `Failed` (sticky) - the work threw.       |
+| `-Source`    | string  | No       | Provenance tag applied on first creation of the node.   |
+
+```powershell
+Add-TimingSpanDuration -Tree $tree -Name 'provider: files' -ElapsedMs 1200
+```
+
+---
+
 ## Reusable CI
 
 The composite actions under `.github/actions/` and the reusable workflows
@@ -595,23 +708,32 @@ must be a sibling checkout (`..\Common-Automation`):
 Common-PowerShell/
 |- Common.PowerShell/
 |  |- Private/                          # Module-internal helpers (not exported); mirrors Public\ layout
-|  |  `- Retry/
-|  |     `- Assert-RetryStrategyShape.ps1
+|  |  |- Retry/
+|  |  |  `- Assert-RetryStrategyShape.ps1
+|  |  `- Timing/                        # Timing-tree internals (mint / accumulate / skeleton walk)
+|  |     |- Resolve-TimingSpanChildNode.ps1
+|  |     |- Add-TimingSpanNodeElapsed.ps1
+|  |     `- Add-TimingSpanSkeletonBranch.ps1
 |  |- Public/
 |  |  |- Assert-RequiredProperties.ps1
 |  |  |- ConvertTo-Array.ps1
 |  |  |- Invoke-ModuleInstall.ps1
-|  |  `- Retry/                         # Retry family (loop + strategies)
-|  |     |- Invoke-WithRetry.ps1             # generic retry loop
-|  |     |- TransientErrorStrategies/       # ShouldRetry classifiers
-|  |     |  |- New-FileLockRetryStrategy.ps1
-|  |     |  |- New-TransientNetworkRetryStrategy.ps1
-|  |     |  `- New-TransientPowerShellModuleInstallRetryStrategy.ps1
-|  |     `- BackoffStrategies/              # GetDelay providers
-|  |        |- New-ConstantBackoffStrategy.ps1
-|  |        |- New-CustomBackoffStrategy.ps1
-|  |        |- New-ExponentialBackoffStrategy.ps1
-|  |        `- New-LinearBackoffStrategy.ps1
+|  |  |- Retry/                         # Retry family (loop + strategies)
+|  |  |  |- Invoke-WithRetry.ps1             # generic retry loop
+|  |  |  |- TransientErrorStrategies/       # ShouldRetry classifiers
+|  |  |  |  |- New-FileLockRetryStrategy.ps1
+|  |  |  |  |- New-TransientNetworkRetryStrategy.ps1
+|  |  |  |  `- New-TransientPowerShellModuleInstallRetryStrategy.ps1
+|  |  |  `- BackoffStrategies/              # GetDelay providers
+|  |  |     |- New-ConstantBackoffStrategy.ps1
+|  |  |     |- New-CustomBackoffStrategy.ps1
+|  |  |     |- New-ExponentialBackoffStrategy.ps1
+|  |  |     `- New-LinearBackoffStrategy.ps1
+|  |  `- Timing/                        # Arbitrary-depth timing framework (model + accumulation)
+|  |     |- New-TimingSpanTree.ps1
+|  |     |- Initialize-TimingSpanTree.ps1
+|  |     |- Measure-TimingSpan.ps1
+|  |     `- Add-TimingSpanDuration.ps1
 |  |- Common.PowerShell.psm1        # Dot-sources Public\ (recursively); exports Public functions
 |  `- Common.PowerShell.psd1        # Module manifest (version, GUID, exports)
 |- Tests/                               # One .Tests.ps1 per Public\ fn, mirroring its layout (Retry\, ...)

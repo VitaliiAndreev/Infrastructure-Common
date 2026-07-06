@@ -12,6 +12,15 @@ history and the tag list.
 
 ## [Unreleased]
 
+### Added
+- Timing-tree framework (`New-TimingSpanTree`, `Initialize-TimingSpanTree`,
+  `Measure-TimingSpan`, `Add-TimingSpanDuration`) - an arbitrary-depth,
+  context-owned nested span model with by-name accumulation and sticky-Failed
+  status. Generalises the provisioner's 2-level phase-timing framework so
+  timings can nest to any depth and, later in the feature, cross the process
+  boundary. Export/import, the report renderer, and the version bump land in
+  subsequent steps.
+
 ## [9.0.1] - 2026-06-17
 
 ### Fixed
