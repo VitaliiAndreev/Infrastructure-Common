@@ -20,8 +20,10 @@ ordered, committable steps only. Steps do not repeat context already in
   - [C2. Graft child-process trees under their parts](#c2-graft-child-process-trees-under-their-parts)
   - [C3. Emit report + rolling JSON artifact with retention](#c3-emit-report--rolling-json-artifact-with-retention)
 - [Section D - Child-process depth emitters](#section-d---child-process-depth-emitters)
-  - [D1. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
+  - [D1-A. Default-context export shim + version gate (Common.PowerShell)](#d1-a-default-context-export-shim--version-gate-commonpowershell)
+  - [D1-B. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-b-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
   - [D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d2-instrument--export-registerderegister-runnersps1-githubrunners)
+  - [D3. Instrument + export create/remove-users.ps1 (Vm-Users)](#d3-instrument--export-createremove-usersps1-vm-users)
 - [Section E - Bash depth tier (last)](#section-e---bash-depth-tier-last)
   - [E1. Bash timing emitter + wire into the bash flows](#e1-bash-timing-emitter--wire-into-the-bash-flows)
 - [Cross-process data flow (whole feature)](#cross-process-data-flow-whole-feature)
@@ -392,15 +394,66 @@ test-agnostic (production stays E2E-unaware, per memory). Each consuming step
 also bumps its repo's `Common.PowerShell` minimum-version pin to the surface
 it needs, per the A5 convention.
 
-### D1. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)
+The provisioner and the runner scripts drive timing through the 2-level compat
+shims (A4), whose tree lives in the module-private default context - there is
+no exported way for a shim consumer to serialise it. D1-A adds that missing
+piece (an `Export-PhaseTimingTree` shim over the default context) as a
+Common.PowerShell surface + release gate; the shim consumers (D1-B, D2) then
+call it behind the env-var opt-in and pin the version that shipped it.
+
+### D1-A. Default-context export shim + version gate (Common.PowerShell)
+
+**What.** Add `Export-PhaseTimingTree -Path <file>` to
+`Common.PowerShell/Public/Timing/` - a 2-level compat shim that serialises the
+module-private default context (`$script:DefaultPhaseTimingTree`, the tree the
+A4 shims build) by delegating to the core `Export-TimingSpanTree -Tree`. It is
+the export counterpart of `Write-PhaseTimingReport`: same no-`-Tree` surface,
+same default-context read, and the same "return silently when the context was
+never initialised" guard. Per the manifest-wiring convention, dot-source it in
+the psm1 and list it alphabetically in both `FunctionsToExport` and
+`Export-ModuleMember`. Then run the release gate exactly as A5: bump
+`ModuleVersion`, promote the `[Unreleased]` CHANGELOG entry to the new version +
+date. No cross-repo pin moves here (the consumers pin as they start calling it,
+in D1-B and D2).
+
+**Why.** A shim consumer (`provision.ps1`, `register-runners.ps1`) has no handle
+to the default context - it is private to the module scope, reachable today only
+by `Write-PhaseTimingReport` from inside the module. Exporting that context on
+the `TIMING_TREE_OUTPUT_PATH` opt-in (D1-B, D2) therefore needs a shim member
+that reads it, mirroring the report verb. Keeping the core `Export-TimingSpanTree`
+mandatory-`-Tree` preserves the clean context-explicit core / default-context
+shim split the module was built on (see A4); overloading the core verb with a
+hidden-global fallback would blur that line and turn a forgotten `-Tree` into
+silent action-at-a-distance instead of a binding error.
+
+**Tests** (`Common.PowerShell.Tests`, unit): with a default context initialised
+and populated (via the shims), `Export-PhaseTimingTree -Path` writes a
+schema-valid JSON whose tree matches the default context (round-trips via
+`Import-TimingSpanTree`); with no context initialised, it writes nothing and
+does not throw (parity with `Write-PhaseTimingReport`'s null-guard).
+assert-changelog-version gate green; `Module.Tests` export-intersection green
+for the new verb.
+
+```mermaid
+flowchart LR
+  shim["Export-PhaseTimingTree -Path (shim)"] -->|reads| ctx["$script:DefaultPhaseTimingTree"]
+  shim -->|delegates -Tree| core["Export-TimingSpanTree"]
+  core --> json["tree.json (schema v1)"]
+  none["no context"] -->|null-guard| noop["no file, no throw"]
+```
+
+### D1-B. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)
 
 **What.** At the end of `provision.ps1`'s outer `try/finally` (where
 `Write-PhaseTimingReport` already runs), when
-`$env:TIMING_TREE_OUTPUT_PATH` is set, also call `Export-TimingSpanTree` to
-that path - on success AND failure. When unset, behaviour is unchanged
-(console report only). Neutral variable name; the script does not know who
-consumes it. See
-[cross-process handoff](problem.md#resolved-decisions).
+`$env:TIMING_TREE_OUTPUT_PATH` is set, also call `Export-PhaseTimingTree` (the
+D1-A shim) to that path - on success AND failure. The early `Wsl2NotReady`
+reboot exit already prints the report before `exit 0`; extend that path the same
+way so a partial run still emits its artifact when the opt-in is set. When unset,
+behaviour is unchanged (console report only). Neutral variable name; the script
+does not know who consumes it. Raise the provisioner's `Common.PowerShell`
+minimum-version floor to the release D1-A shipped in, so the import resolves the
+new shim. See [cross-process handoff](problem.md#resolved-decisions).
 
 **Why.** This is the child half of the process-boundary bridge whose parent
 half (C2) already imports and grafts; it is what finally populates the
@@ -418,7 +471,7 @@ sequenceDiagram
   Prov->>Prov: Write-PhaseTimingReport (always)
   Prov->>Env: read
   alt set
-    Prov->>Prov: Export-TimingSpanTree -Path $Env
+    Prov->>Prov: Export-PhaseTimingTree -Path $Env
   else unset
     Prov->>Prov: no export (unchanged)
   end
@@ -429,7 +482,8 @@ sequenceDiagram
 **What.** Wrap the meaningful stages of `register-runners.ps1` (and
 `deregister-runners.ps1`) in `Invoke-WithPhaseTimer`/`Invoke-WithSubStepTimer`
 (or the core verbs) via the shared module, and export on the same
-`TIMING_TREE_OUTPUT_PATH` opt-in as D1.
+`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B - via the D1-A `Export-PhaseTimingTree`
+shim, pinning the release that shipped it.
 
 **Why.** Runner registration is a distinct phase of the E2E run and a
 plausible time sink ([What we want](problem.md#what-we-want)); without this
@@ -444,6 +498,34 @@ flowchart TD
   reg --> t2["config.sh (register)"]
   reg --> t3["svc.sh (install+start)"]
   reg -->|opt-in| json["tree.json"]
+```
+
+### D3. Instrument + export create/remove-users.ps1 (Vm-Users)
+
+**What.** Wrap the meaningful stages of `create-users.ps1` (and its
+`remove-users.ps1` counterpart) in `Invoke-WithPhaseTimer`/
+`Invoke-WithSubStepTimer` (or the core verbs) via the shared module - read
+provisioner config, resolve router IP, read users config, match + SSH-probe
+targets, per-VM group / sudoers / user reconciliation - and export on the same
+`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B, via the D1-A `Export-PhaseTimingTree`
+shim, pinning the release that shipped it. Test-agnostic (production stays
+E2E-unaware, per memory).
+
+**Why.** The `reconcile users` E2E part (C1) is a PowerShell shell-out to
+`create-users.ps1` - the third child of the same tier as provision (D1-B) and
+runners (D2), not the bash `create-users.sh` (that is the Ansible path, timed
+by E1). Without this the users part stays a single opaque span after C2 grafts
+its empty subtree ([What we want](problem.md#what-we-want)).
+
+**Tests** (unit): stages recorded under the expected names; export written
+when the env var is set; unset path unchanged.
+
+```mermaid
+flowchart TD
+  cu["create-users.ps1"] --> s1["read configs + resolve router IP"]
+  cu --> s2["match + SSH-probe targets"]
+  cu --> s3["per-VM group / sudoers / user reconcile"]
+  cu -->|opt-in| json["tree.json"]
 ```
 
 ## Section E - Bash depth tier (last)
