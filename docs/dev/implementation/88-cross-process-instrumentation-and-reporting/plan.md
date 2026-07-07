@@ -22,8 +22,8 @@ ordered, committable steps only. Steps do not repeat context already in
 - [Section D - Child-process depth emitters](#section-d---child-process-depth-emitters)
   - [D1-A. Default-context export shim + version gate (Common.PowerShell)](#d1-a-default-context-export-shim--version-gate-commonpowershell)
   - [D1-B. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-b-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
-  - [D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d2-instrument--export-registerderegister-runnersps1-githubrunners)
-  - [D3. Instrument + export create/remove-users.ps1 (Vm-Users)](#d3-instrument--export-createremove-usersps1-vm-users)
+  - [D2. Instrument + export create/remove-users.ps1 (Vm-Users)](#d2-instrument--export-createremove-usersps1-vm-users)
+  - [D3. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d3-instrument--export-registerderegister-runnersps1-githubrunners)
 - [Section E - Bash depth tier (last)](#section-e---bash-depth-tier-last)
   - [E1. Bash timing emitter + wire into the bash flows](#e1-bash-timing-emitter--wire-into-the-bash-flows)
 - [Cross-process data flow (whole feature)](#cross-process-data-flow-whole-feature)
@@ -398,7 +398,7 @@ The provisioner and the runner scripts drive timing through the 2-level compat
 shims (A4), whose tree lives in the module-private default context - there is
 no exported way for a shim consumer to serialise it. D1-A adds that missing
 piece (an `Export-PhaseTimingTree` shim over the default context) as a
-Common.PowerShell surface + release gate; the shim consumers (D1-B, D2) then
+Common.PowerShell surface + release gate; the shim consumers (D1-B, D3) then
 call it behind the env-var opt-in and pin the version that shipped it.
 
 ### D1-A. Default-context export shim + version gate (Common.PowerShell)
@@ -414,12 +414,12 @@ the psm1 and list it alphabetically in both `FunctionsToExport` and
 `Export-ModuleMember`. Then run the release gate exactly as A5: bump
 `ModuleVersion`, promote the `[Unreleased]` CHANGELOG entry to the new version +
 date. No cross-repo pin moves here (the consumers pin as they start calling it,
-in D1-B and D2).
+in D1-B and D3).
 
 **Why.** A shim consumer (`provision.ps1`, `register-runners.ps1`) has no handle
 to the default context - it is private to the module scope, reachable today only
 by `Write-PhaseTimingReport` from inside the module. Exporting that context on
-the `TIMING_TREE_OUTPUT_PATH` opt-in (D1-B, D2) therefore needs a shim member
+the `TIMING_TREE_OUTPUT_PATH` opt-in (D1-B, D3) therefore needs a shim member
 that reads it, mirroring the report verb. Keeping the core `Export-TimingSpanTree`
 mandatory-`-Tree` preserves the clean context-explicit core / default-context
 shim split the module was built on (see A4); overloading the core verb with a
@@ -477,7 +477,35 @@ sequenceDiagram
   end
 ```
 
-### D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)
+### D2. Instrument + export create/remove-users.ps1 (Vm-Users)
+
+**What.** Wrap the meaningful stages of `create-users.ps1` (and its
+`remove-users.ps1` counterpart) in `Invoke-WithPhaseTimer`/
+`Invoke-WithSubStepTimer` (or the core verbs) via the shared module - read
+provisioner config, resolve router IP, read users config, match + SSH-probe
+targets, per-VM group / sudoers / user reconciliation - and export on the same
+`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B, via the D1-A `Export-PhaseTimingTree`
+shim, pinning the release that shipped it. Test-agnostic (production stays
+E2E-unaware, per memory).
+
+**Why.** The `reconcile users` E2E part (C1) is a PowerShell shell-out to
+`create-users.ps1` - the third child of the same tier as provision (D1-B) and
+runners (D3), not the bash `create-users.sh` (that is the Ansible path, timed
+by E1). Without this the users part stays a single opaque span after C2 grafts
+its empty subtree ([What we want](problem.md#what-we-want)).
+
+**Tests** (unit): stages recorded under the expected names; export written
+when the env var is set; unset path unchanged.
+
+```mermaid
+flowchart TD
+  cu["create-users.ps1"] --> s1["read configs + resolve router IP"]
+  cu --> s2["match + SSH-probe targets"]
+  cu --> s3["per-VM group / sudoers / user reconcile"]
+  cu -->|opt-in| json["tree.json"]
+```
+
+### D3. Instrument + export register/deregister-runners.ps1 (GitHubRunners)
 
 **What.** Wrap the meaningful stages of `register-runners.ps1` (and
 `deregister-runners.ps1`) in `Invoke-WithPhaseTimer`/`Invoke-WithSubStepTimer`
@@ -498,34 +526,6 @@ flowchart TD
   reg --> t2["config.sh (register)"]
   reg --> t3["svc.sh (install+start)"]
   reg -->|opt-in| json["tree.json"]
-```
-
-### D3. Instrument + export create/remove-users.ps1 (Vm-Users)
-
-**What.** Wrap the meaningful stages of `create-users.ps1` (and its
-`remove-users.ps1` counterpart) in `Invoke-WithPhaseTimer`/
-`Invoke-WithSubStepTimer` (or the core verbs) via the shared module - read
-provisioner config, resolve router IP, read users config, match + SSH-probe
-targets, per-VM group / sudoers / user reconciliation - and export on the same
-`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B, via the D1-A `Export-PhaseTimingTree`
-shim, pinning the release that shipped it. Test-agnostic (production stays
-E2E-unaware, per memory).
-
-**Why.** The `reconcile users` E2E part (C1) is a PowerShell shell-out to
-`create-users.ps1` - the third child of the same tier as provision (D1-B) and
-runners (D2), not the bash `create-users.sh` (that is the Ansible path, timed
-by E1). Without this the users part stays a single opaque span after C2 grafts
-its empty subtree ([What we want](problem.md#what-we-want)).
-
-**Tests** (unit): stages recorded under the expected names; export written
-when the env var is set; unset path unchanged.
-
-```mermaid
-flowchart TD
-  cu["create-users.ps1"] --> s1["read configs + resolve router IP"]
-  cu --> s2["match + SSH-probe targets"]
-  cu --> s3["per-VM group / sudoers / user reconcile"]
-  cu -->|opt-in| json["tree.json"]
 ```
 
 ## Section E - Bash depth tier (last)
@@ -563,7 +563,7 @@ flowchart TD
   end
   subgraph Children["child processes (opt-in via TIMING_TREE_OUTPUT_PATH)"]
     prov["provision.ps1 (D1)"]
-    reg["register-runners.ps1 (D2)"]
+    reg["register-runners.ps1 (D3)"]
     bash["bash flows (E1)"]
   end
   subgraph Shared["Common.PowerShell (A)"]
