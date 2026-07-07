@@ -156,10 +156,7 @@ partial elapsed; total counts root only (no double-count).
 ```mermaid
 flowchart TD
   tree["merged tree"] --> R["Write-TimingSpanReport"]
-  R --> out["indented console block:
-  name  [TAG]  s  (% of parent)
-  ...
-  total observed: N s"]
+  R --> out["indented console block:<br/>name [TAG] s (% of parent)<br/>...<br/>total observed: N s"]
 ```
 
 ### A4. Re-express the 2-level verbs as shims
@@ -254,8 +251,7 @@ intersection is already green from A1-A4.)
 
 ```mermaid
 flowchart LR
-  psd1["Common.PowerShell.psd1
-  ModuleVersion bump"] --> gate["check-version-is-new + assert-changelog"]
+  psd1["Common.PowerShell.psd1<br/>ModuleVersion bump"] --> gate["check-version-is-new + assert-changelog"]
   changelog["CHANGELOG [Unreleased] -> version"] --> gate
   pins["consumer RequiredModules pins"] --> gate
   gate --> ok["release CI green"]
@@ -357,7 +353,7 @@ sequenceDiagram
   E2E->>Child: & provision.ps1
   Child->>Env: Export-TimingSpanTree
   E2E->>Env: Import-TimingSpanTree
-  E2E->>E2E: graft subtree under part; delete temp
+  E2E->>E2E: graft subtree under part, then delete temp
 ```
 
 ### C3. Emit report + rolling JSON artifact with retention
