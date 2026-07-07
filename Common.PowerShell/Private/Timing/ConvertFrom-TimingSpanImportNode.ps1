@@ -18,8 +18,8 @@
 #   a crashed child's export must never fail the parent's own report.
 #
 #   Children are rebuilt as a List[object] so the reconstructed subtree is
-#   the same type the live framework mints - the E2E graft step (D2) can
-#   append it under a part span without a type mismatch.
+#   the same type the live framework mints - the E2E graft step (feature 88
+#   C2) can append it under a part span without a type mismatch.
 # ---------------------------------------------------------------------------
 
 function ConvertFrom-TimingSpanImportNode {
