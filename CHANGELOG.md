@@ -12,6 +12,21 @@ history and the tag list.
 
 ## [Unreleased]
 
+## [9.2.0] - 2026-07-07
+
+### Added
+- `Export-PhaseTimingTree` - the export counterpart of the 2-level
+  `Write-PhaseTimingReport` compat shim. Serialises the module-private default
+  context (`$script:DefaultPhaseTimingTree`, the tree the phase/sub-step shims
+  build) to the versioned nested-JSON schema (`e2e-timing/v1`) by delegating to
+  the context-explicit core `Export-TimingSpanTree`. Same no-`-Tree` surface and
+  same "return silently when the context was never initialised" null-guard as
+  `Write-PhaseTimingReport`, so it is safe to call from the same outer finally.
+  Gives a shim consumer (`provision.ps1`, `register-runners.ps1`) the missing
+  handle to serialise its timings for the cross-process handoff, on the
+  `TIMING_TREE_OUTPUT_PATH` opt-in, without exposing the default context or
+  overloading the core verb with a hidden-global fallback.
+
 ## [9.1.0] - 2026-07-06
 
 ### Added
@@ -74,7 +89,8 @@ history and the tag list.
   `-RetryableExitCode` set, or throw and use `Invoke-WithRetry` for
   predicate-based classification.
 
-[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.1.0...HEAD
+[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.2.0...HEAD
+[9.2.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.1.0...9.2.0
 [9.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...9.1.0
 [9.0.1]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.0...9.0.1
 [9.0.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/8.1.0...9.0.0
