@@ -50,15 +50,17 @@
       and a total line for the root) - the arbitrary-depth, merge-aware
       counterpart of the 2-level Write-PhaseTimingReport.
     - Initialize-PhaseTimings / Invoke-WithPhaseTimer / Invoke-WithSubStepTimer
-      / Add-SubStepDuration / Write-PhaseTimingReport / Export-PhaseTimingTree:
-      the 2-level compat verbs, re-expressed as thin shims over the timing-tree
-      core and a single module-scoped default context. They keep the
-      pre-generalisation signatures (no -Tree argument) and byte-identical
-      console report so existing call sites migrate to one framework without
-      behaviour change. Export-PhaseTimingTree is the export counterpart of
-      Write-PhaseTimingReport - it serialises that default context to the
-      cross-process JSON schema for the child half of the process-boundary
-      handoff.
+      / Add-SubStepDuration / Write-PhaseTimingReport / Export-PhaseTimingTree /
+      Export-PhaseTimingTreeIfRequested: the 2-level compat verbs, re-expressed
+      as thin shims over the timing-tree core and a single module-scoped default
+      context. They keep the pre-generalisation signatures (no -Tree argument)
+      and byte-identical console report so existing call sites migrate to one
+      framework without behaviour change. Export-PhaseTimingTree is the export
+      counterpart of Write-PhaseTimingReport - it serialises that default context
+      to the cross-process JSON schema for the child half of the process-boundary
+      handoff; Export-PhaseTimingTreeIfRequested is its self-guarding opt-in
+      wrapper, reading the TIMING_TREE_OUTPUT_PATH env var so each child emitter
+      makes one intention-revealing call instead of hand-writing the guard.
 
     Hyper-V VM helpers (SSH execution, host file server) were moved to the
     Infrastructure.HyperV module to keep this module focused on genuinely
@@ -121,6 +123,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Public\Timing\Add-SubStepDuration.ps1"
 . "$PSScriptRoot\Public\Timing\Add-TimingSpanDuration.ps1"
 . "$PSScriptRoot\Public\Timing\Export-PhaseTimingTree.ps1"
+. "$PSScriptRoot\Public\Timing\Export-PhaseTimingTreeIfRequested.ps1"
 . "$PSScriptRoot\Public\Timing\Export-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Import-TimingSpanTree.ps1"
 . "$PSScriptRoot\Public\Timing\Initialize-PhaseTimings.ps1"
@@ -158,6 +161,7 @@ Export-ModuleMember -Function `
     Add-SubStepDuration, `
     Add-TimingSpanDuration, `
     Export-PhaseTimingTree, `
+    Export-PhaseTimingTreeIfRequested, `
     Export-TimingSpanTree, `
     Import-TimingSpanTree, `
     Initialize-PhaseTimings, `

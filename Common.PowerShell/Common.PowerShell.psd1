@@ -41,6 +41,7 @@
         # Timing tree - 2-level compat shims (Public/Timing/)
         'Add-SubStepDuration',
         'Export-PhaseTimingTree',
+        'Export-PhaseTimingTreeIfRequested',
         'Initialize-PhaseTimings',
         'Invoke-WithPhaseTimer',
         'Invoke-WithSubStepTimer',
