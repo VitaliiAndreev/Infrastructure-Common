@@ -19,7 +19,6 @@ ordered, committable steps only. Steps do not repeat context already in
   - [C1. Instrument the runner-lifecycle tree](#c1-instrument-the-runner-lifecycle-tree)
   - [C2. Graft child-process trees under their parts](#c2-graft-child-process-trees-under-their-parts)
   - [C3. Emit report + rolling JSON artifact with retention](#c3-emit-report--rolling-json-artifact-with-retention)
-  - [C4. README](#c4-readme)
 - [Section D - Child-process depth emitters](#section-d---child-process-depth-emitters)
   - [D1. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
   - [D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d2-instrument--export-registerderegister-runnersps1-githubrunners)
@@ -43,6 +42,9 @@ ordered, committable steps only. Steps do not repeat context already in
   gate handled once in A5.
 - Coverage is collected on every PowerShell test run and reported in
   totality and per project, per CLAUDE.md.
+- Each step updates the README sections it earns, in the same commit that
+  introduces the surface. Documentation is part of every step, never a
+  separate terminal docs pass.
 
 ## Section A - Shared N-level primitive (Common.PowerShell)
 
@@ -379,21 +381,6 @@ flowchart TD
   finally["run finally"] --> rep["Write-TimingSpanReport (console)"]
   finally --> exp["Export-TimingSpanTree -> timing/<ts>.json"]
   exp --> prune["Limit-RetainedItem -MaxItems N -FileOnly"]
-```
-
-### C4. README
-
-**What.** Document the timing report and artifact in the E2E README (what
-it shows, where the JSON lands, the retention knob, the
-`TIMING_TREE_OUTPUT_PATH` opt-in). Update the section index.
-
-**Why.** House rule: docs earned per feature, kept navigable.
-
-**Tests**: n/a (docs); markdown index links valid.
-
-```mermaid
-flowchart LR
-  feat["timing feature"] --> readme["README: Timing report section + index entry"]
 ```
 
 ## Section D - Child-process depth emitters
