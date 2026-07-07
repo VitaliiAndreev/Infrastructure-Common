@@ -22,8 +22,10 @@ ordered, committable steps only. Steps do not repeat context already in
 - [Section D - Child-process depth emitters](#section-d---child-process-depth-emitters)
   - [D1-A. Default-context export shim + version gate (Common.PowerShell)](#d1-a-default-context-export-shim--version-gate-commonpowershell)
   - [D1-B. Export the provisioner tree on the env-var opt-in (Vm-Provisioner)](#d1-b-export-the-provisioner-tree-on-the-env-var-opt-in-vm-provisioner)
-  - [D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d2-instrument--export-registerderegister-runnersps1-githubrunners)
-  - [D3. Instrument + export create/remove-users.ps1 (Vm-Users)](#d3-instrument--export-createremove-usersps1-vm-users)
+  - [D2. Instrument + export create/remove-users.ps1 (Vm-Users)](#d2-instrument--export-createremove-usersps1-vm-users)
+  - [D2-B. Self-guarding opt-in export shim + consumer adoption (Common.PowerShell)](#d2-b-self-guarding-opt-in-export-shim--consumer-adoption-commonpowershell)
+  - [D2-C. Extract the whole user-reconcile orchestration (Vm-Users)](#d2-c-extract-the-whole-user-reconcile-orchestration-vm-users)
+  - [D3. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d3-instrument--export-registerderegister-runnersps1-githubrunners)
 - [Section E - Bash depth tier (last)](#section-e---bash-depth-tier-last)
   - [E1. Bash timing emitter + wire into the bash flows](#e1-bash-timing-emitter--wire-into-the-bash-flows)
 - [Cross-process data flow (whole feature)](#cross-process-data-flow-whole-feature)
@@ -398,7 +400,7 @@ The provisioner and the runner scripts drive timing through the 2-level compat
 shims (A4), whose tree lives in the module-private default context - there is
 no exported way for a shim consumer to serialise it. D1-A adds that missing
 piece (an `Export-PhaseTimingTree` shim over the default context) as a
-Common.PowerShell surface + release gate; the shim consumers (D1-B, D2) then
+Common.PowerShell surface + release gate; the shim consumers (D1-B, D3) then
 call it behind the env-var opt-in and pin the version that shipped it.
 
 ### D1-A. Default-context export shim + version gate (Common.PowerShell)
@@ -414,12 +416,12 @@ the psm1 and list it alphabetically in both `FunctionsToExport` and
 `Export-ModuleMember`. Then run the release gate exactly as A5: bump
 `ModuleVersion`, promote the `[Unreleased]` CHANGELOG entry to the new version +
 date. No cross-repo pin moves here (the consumers pin as they start calling it,
-in D1-B and D2).
+in D1-B and D3).
 
 **Why.** A shim consumer (`provision.ps1`, `register-runners.ps1`) has no handle
 to the default context - it is private to the module scope, reachable today only
 by `Write-PhaseTimingReport` from inside the module. Exporting that context on
-the `TIMING_TREE_OUTPUT_PATH` opt-in (D1-B, D2) therefore needs a shim member
+the `TIMING_TREE_OUTPUT_PATH` opt-in (D1-B, D3) therefore needs a shim member
 that reads it, mirroring the report verb. Keeping the core `Export-TimingSpanTree`
 mandatory-`-Tree` preserves the clean context-explicit core / default-context
 shim split the module was built on (see A4); overloading the core verb with a
@@ -477,13 +479,177 @@ sequenceDiagram
   end
 ```
 
-### D2. Instrument + export register/deregister-runners.ps1 (GitHubRunners)
+### D2. Instrument + export create/remove-users.ps1 (Vm-Users)
+
+**What.** Wrap the meaningful stages of `create-users.ps1` (and its
+`remove-users.ps1` counterpart) in `Invoke-WithPhaseTimer`/
+`Invoke-WithSubStepTimer` (or the core verbs) via the shared module - read
+provisioner config, resolve router IP, read users config, match + SSH-probe
+targets, per-VM group / sudoers / user reconciliation - and export on the same
+`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B, via the D1-A `Export-PhaseTimingTree`
+shim, pinning the release that shipped it. Test-agnostic (production stays
+E2E-unaware, per memory).
+
+**Why.** The `reconcile users` E2E part (C1) is a PowerShell shell-out to
+`create-users.ps1` - the third child of the same tier as provision (D1-B) and
+runners (D3), not the bash `create-users.sh` (that is the Ansible path, timed
+by E1). Without this the users part stays a single opaque span after C2 grafts
+its empty subtree ([What we want](problem.md#what-we-want)).
+
+**Tests** (unit): stages recorded under the expected names; export written
+when the env var is set; unset path unchanged.
+
+```mermaid
+flowchart TD
+  cu["create-users.ps1"] --> s1["read configs + resolve router IP"]
+  cu --> s2["match + SSH-probe targets"]
+  cu --> s3["per-VM group / sudoers / user reconcile"]
+  cu -->|opt-in| json["tree.json"]
+```
+
+### D2-B. Self-guarding opt-in export shim + consumer adoption (Common.PowerShell)
+
+**What.** The child emitters all hand-write the same four-line opt-in guard -
+`if ($env:TIMING_TREE_OUTPUT_PATH) { Export-PhaseTimingTree -Path
+$env:TIMING_TREE_OUTPUT_PATH }` - once each in `create-users.ps1` and
+`remove-users.ps1` (D2), and twice in `provision.ps1` (the outer `finally` and
+the `Wsl2NotReady` reboot-exit, D1-B). Add a self-guarding shim
+`Export-PhaseTimingTreeIfRequested` to `Common.PowerShell/Public/Timing/`: a
+no-`-Tree` default-context verb that reads the neutral output-path environment
+variable (default `TIMING_TREE_OUTPUT_PATH`, overridable via `-EnvVariableName`)
+and, when it is set, delegates to `Export-PhaseTimingTree`; when unset - or when
+the default context was never initialised - it no-ops. Wire it per the manifest
+convention (psm1 dot-source + alphabetical entry in both `FunctionsToExport` and
+`Export-ModuleMember`) and run the release gate exactly as D1-A: bump
+`ModuleVersion`, promote the `[Unreleased]` CHANGELOG entry.
+
+Then collapse every current call site to a single
+`Export-PhaseTimingTreeIfRequested` - `create-users.ps1` and `remove-users.ps1`
+(D2) and both `provision.ps1` sites (finally + reboot-exit, D1-B) - and raise
+each consumer's `Common.PowerShell` floor to the release this ships. D2-C then
+carries the one shim call into the extracted orchestrator; D3 uses the shim from
+the start; so neither hand-writes the guard.
+
+**Why.** The env-guard idiom is the last repeated timing fragment across the
+child emitters, and it hard-codes the `TIMING_TREE_OUTPUT_PATH` contract name at
+each site - a typo in one consumer silently disables its export with no error.
+Centralising the guard and the env-var name in one shim makes the opt-in
+contract single-sourced (the name lives in exactly one place) and turns each
+call site into one intention-revealing call. Keeping the core
+`Export-PhaseTimingTree` mandatory-`-Path` preserves the context-explicit
+core / opt-in-aware shim split the module was built on (see A4 and D1-A);
+the env-var read lives only in the shim. Sequenced before D2-C (right after D2)
+so the shim is already in place when D2-C collapses the two Vm-Users scripts -
+the extracted orchestrator inherits the one shim call rather than a hand-written
+guard that would then need swapping out.
+
+**Tests** (`Common.PowerShell.Tests`, unit): env set + populated default context
+-> `Export-PhaseTimingTreeIfRequested` writes schema-valid JSON that round-trips
+via `Import-TimingSpanTree`; env unset -> no file, no throw; context never
+initialised -> no file, no throw (null-guard parity with
+`Write-PhaseTimingReport`); a custom `-EnvVariableName` is honoured.
+assert-changelog-version gate green; `Module.Tests` export-intersection green for
+the new verb. Consumer AST suites simplify: the `provision.ps1`,
+`create-users.ps1`, and `remove-users.ps1` export checks drop the
+`if ($env:...)` guard walk and instead assert a single unguarded
+`Export-PhaseTimingTreeIfRequested` at each export site, plus the raised floor.
+
+```mermaid
+flowchart LR
+  subgraph mod["Common.PowerShell"]
+    shim["Export-PhaseTimingTreeIfRequested<br/>(-EnvVariableName = TIMING_TREE_OUTPUT_PATH)"]
+    shim -->|env set| core["Export-PhaseTimingTree (default ctx)"]
+    shim -->|unset / no ctx| noop["no file, no throw"]
+    core --> json["tree.json (schema v1)"]
+  end
+  prov["provision.ps1 (D1-B): finally + reboot-exit"] --> shim
+  cu["create-users.ps1 (D2)"] --> shim
+  ru["remove-users.ps1 (D2)"] --> shim
+  runners["register/deregister-runners.ps1 (D3)"] --> shim
+```
+
+### D2-C. Extract the whole user-reconcile orchestration (Vm-Users)
+
+**What.** After D2 and the D2-B shim adoption, `create-users.ps1` and
+`remove-users.ps1` are ~80% identical (~226 verbatim lines): the timing
+declaration, all three timed stages (read-configs + resolve-router-IP, match +
+SSH-probe, and the per-VM SSH session loop with its `New-VmSshClientWithJump`
+connect, `SshConnectionException` / `SocketException` handling, and `Dispose`
+teardown), and the outer `finally` calling the D2-B
+`Export-PhaseTimingTreeIfRequested` shim. Only three things genuinely differ: the
+reconcile-helper dot-sources (`reconcile/up` vs `reconcile/down`), the final
+phase label, and the single per-VM call (`Invoke-VmUserCreate` vs
+`Invoke-VmUserRemove`).
+
+Lift the *entire* orchestration into one shared helper under
+`Infrastructure-Vm-Users/hyper-v/ubuntu/PowerShell/reconcile/common/` (e.g.
+`Invoke-VmUserReconcileRun.ps1`) that takes `-SecretSuffix`, `-FinalPhaseName`,
+and a `-PerVmAction` scriptblock (invoked per reachable VM with the open SSH
+client, VM name, and users entry). The helper owns `Initialize-PhaseTimings`
+(the two shared stage names plus the passed final name), the `try` running and
+timing all three stages - the per-VM loop calls `& $PerVmAction` where the lone
+reconcile/removal call used to be - and the `finally` shim call
+(`Export-PhaseTimingTreeIfRequested`, from D2-B). The shared router-resolution /
+probe / session / scope-threading rationale comments move to the helper so they
+have one home, per the no-duplicate-comments rule.
+
+Each entry script collapses to its bootstrap and one call: dot-source
+`Install-ModuleDependencies`, dot-source its own `reconcile/{up,down}` helpers
+and the shared orchestrator, then invoke `Invoke-VmUserReconcileRun` with its
+final label and a `-PerVmAction` that calls `Invoke-VmUserCreate` (create) or
+`Invoke-VmUserRemove` (remove). Nothing else remains duplicated between the two.
+
+**Why.** SSOT: two verbatim copies of a multi-stage vault-read + router-
+resolution + SSH-probe + session-lifecycle flow drift silently - a fix to one
+(a probe timeout, a KVP-discovery tweak, a `Dispose`-ordering correction) is
+easy to forget in the other, and D2's timing scaffolding widened the copied
+region until duplication is the dominant cost of both files
+([constraints](problem.md#constraints-and-non-goals): one framework, not
+parallel copies). Extraction also creates a mockable function seam: the entry
+scripts are AST-only tested because their top-level side effects cannot be
+dot-sourced, but a helper function CAN be dot-sourced with `Get-Secret` /
+`Test-VmSshPort` / `Get-VmKvpIpAddress` / `New-VmSshClientWithJump` mocked, so
+the whole flow gains real behavioural coverage instead of structural checks. The
+`$script:`-scope threading between timed stages (D2's child-scope workaround) is
+then written and tested once. Sequenced after D2-B so the `finally` it
+centralises already calls the shared shim.
+
+**Tests** (`Infrastructure-Vm-Users`, unit): a new behavioural suite for the
+orchestrator, dot-sourcing it with the boundary cmdlets mocked - matched vs
+unmatched join, reachable vs unreachable probe, router-jump vs direct path,
+suffix-carried secret names, `-PerVmAction` invoked once per reachable VM with
+the right client/entry, session `Dispose` on both success and throw, and the
+`finally` invoking `Export-PhaseTimingTreeIfRequested` on the success AND failure
+paths (the env-var opt-in behaviour itself is owned by D2-B's
+`Common.PowerShell` tests). The create/remove-users AST suites shrink to what the
+thin entry scripts still own: each declares its `-FinalPhaseName` and a
+`-PerVmAction` whose body calls its own `Invoke-VmUserCreate` /
+`Invoke-VmUserRemove`, and carries no stale unsuffixed literals. Net coverage
+rises (a formerly AST-only flow becomes unit-tested); the existing behavioural
+tests under `reconcile/{up,down}/` are unaffected.
+
+```mermaid
+flowchart TD
+  subgraph shared["reconcile/common (shared orchestrator)"]
+    h["Invoke-VmUserReconcileRun<br/>-SecretSuffix -FinalPhaseName -PerVmAction"]
+    h --> init["Initialize-PhaseTimings (2 shared + final)"]
+    init --> s1["time: read configs + resolve router IP"]
+    s1 --> s2["time: match + SSH-probe"]
+    s2 --> s3["time final phase: per-VM session loop<br/>-> & PerVmAction(client, vm, entry)"]
+    s3 --> fin["finally: Export-PhaseTimingTreeIfRequested (D2-B shim)"]
+  end
+  cu["create-users.ps1 (thin)"] -->|"-PerVmAction { Invoke-VmUserCreate }"| h
+  ru["remove-users.ps1 (thin)"] -->|"-PerVmAction { Invoke-VmUserRemove }"| h
+```
+
+### D3. Instrument + export register/deregister-runners.ps1 (GitHubRunners)
 
 **What.** Wrap the meaningful stages of `register-runners.ps1` (and
 `deregister-runners.ps1`) in `Invoke-WithPhaseTimer`/`Invoke-WithSubStepTimer`
 (or the core verbs) via the shared module, and export on the same
-`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B - via the D1-A `Export-PhaseTimingTree`
-shim, pinning the release that shipped it.
+`TIMING_TREE_OUTPUT_PATH` opt-in as the other emitters - via the D2-B
+`Export-PhaseTimingTreeIfRequested` self-guarding shim (so the guard is never
+hand-written here), pinning the release that shipped it.
 
 **Why.** Runner registration is a distinct phase of the E2E run and a
 plausible time sink ([What we want](problem.md#what-we-want)); without this
@@ -498,34 +664,6 @@ flowchart TD
   reg --> t2["config.sh (register)"]
   reg --> t3["svc.sh (install+start)"]
   reg -->|opt-in| json["tree.json"]
-```
-
-### D3. Instrument + export create/remove-users.ps1 (Vm-Users)
-
-**What.** Wrap the meaningful stages of `create-users.ps1` (and its
-`remove-users.ps1` counterpart) in `Invoke-WithPhaseTimer`/
-`Invoke-WithSubStepTimer` (or the core verbs) via the shared module - read
-provisioner config, resolve router IP, read users config, match + SSH-probe
-targets, per-VM group / sudoers / user reconciliation - and export on the same
-`TIMING_TREE_OUTPUT_PATH` opt-in as D1-B, via the D1-A `Export-PhaseTimingTree`
-shim, pinning the release that shipped it. Test-agnostic (production stays
-E2E-unaware, per memory).
-
-**Why.** The `reconcile users` E2E part (C1) is a PowerShell shell-out to
-`create-users.ps1` - the third child of the same tier as provision (D1-B) and
-runners (D2), not the bash `create-users.sh` (that is the Ansible path, timed
-by E1). Without this the users part stays a single opaque span after C2 grafts
-its empty subtree ([What we want](problem.md#what-we-want)).
-
-**Tests** (unit): stages recorded under the expected names; export written
-when the env var is set; unset path unchanged.
-
-```mermaid
-flowchart TD
-  cu["create-users.ps1"] --> s1["read configs + resolve router IP"]
-  cu --> s2["match + SSH-probe targets"]
-  cu --> s3["per-VM group / sudoers / user reconcile"]
-  cu -->|opt-in| json["tree.json"]
 ```
 
 ## Section E - Bash depth tier (last)
@@ -563,7 +701,7 @@ flowchart TD
   end
   subgraph Children["child processes (opt-in via TIMING_TREE_OUTPUT_PATH)"]
     prov["provision.ps1 (D1)"]
-    reg["register-runners.ps1 (D2)"]
+    reg["register-runners.ps1 (D3)"]
     bash["bash flows (E1)"]
   end
   subgraph Shared["Common.PowerShell (A)"]

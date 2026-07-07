@@ -1,5 +1,5 @@
 @{
-    ModuleVersion        = '9.2.0'
+    ModuleVersion        = '9.3.0'
     GUID                 = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
     Author               = 'Klark Morrigan'
     Description          = 'Shared PowerShell functions.'
@@ -41,6 +41,7 @@
         # Timing tree - 2-level compat shims (Public/Timing/)
         'Add-SubStepDuration',
         'Export-PhaseTimingTree',
+        'Export-PhaseTimingTreeIfRequested',
         'Initialize-PhaseTimings',
         'Invoke-WithPhaseTimer',
         'Invoke-WithSubStepTimer',

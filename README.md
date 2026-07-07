@@ -134,14 +134,17 @@ and one imported from a child process) coexist in one process.
   counterpart of the provisioner's 2-level phase-timing report.
 - **2-level compat shims** (`Initialize-PhaseTimings`, `Invoke-WithPhaseTimer`,
   `Invoke-WithSubStepTimer`, `Add-SubStepDuration`, `Write-PhaseTimingReport`,
-  `Export-PhaseTimingTree`) - the pre-generalisation phase/sub-step surface,
-  re-expressed as thin wrappers over the core and one module-scoped default
-  context so existing call sites keep their exact signatures (no `-Tree`).
-  Behaviour-preserving: same throw-on-undeclared-phase contract and a
-  byte-identical legacy console report. `Export-PhaseTimingTree` is the export
-  counterpart of `Write-PhaseTimingReport` - it serialises that default context
-  to the cross-process JSON schema so a shim consumer can hand its timings to a
-  parent process.
+  `Export-PhaseTimingTree`, `Export-PhaseTimingTreeIfRequested`) - the
+  pre-generalisation phase/sub-step surface, re-expressed as thin wrappers over
+  the core and one module-scoped default context so existing call sites keep
+  their exact signatures (no `-Tree`). Behaviour-preserving: same
+  throw-on-undeclared-phase contract and a byte-identical legacy console report.
+  `Export-PhaseTimingTree` is the export counterpart of `Write-PhaseTimingReport`
+  - it serialises that default context to the cross-process JSON schema so a
+  shim consumer can hand its timings to a parent process;
+  `Export-PhaseTimingTreeIfRequested` is its self-guarding opt-in wrapper,
+  reading the `TIMING_TREE_OUTPUT_PATH` env var so each child emitter makes one
+  call instead of hand-writing the guard.
 
 This repo is also the canonical home of the reusable CI workflows and composite
 actions that every infrastructure module shares - see
@@ -745,6 +748,7 @@ rewrite, and their behaviour is byte-for-byte the pre-generalisation surface.
 | `Add-SubStepDuration -Parent -Name -ElapsedMs [-Failed]` | `Resolve-TimingSpanChildNode` + accumulate | Measure-less: folds a pre-measured elapsed under a sub-step of the named parent phase. Throws if the parent was not declared. |
 | `Write-PhaseTimingReport` | (legacy renderer over the default context) | Emits the byte-identical 2-level report: fixed banner, sub-steps indented two spaces, top-level-only total. Use `Write-TimingSpanReport` for the arbitrary-depth, percent-aware report. |
 | `Export-PhaseTimingTree -Path` | `Export-TimingSpanTree` (default context) | The export counterpart of `Write-PhaseTimingReport`: serialises the default context to the cross-process JSON schema (`e2e-timing/v1`). No-op (no throw) when the context was never initialised, so it is safe in the same outer finally. Lets a shim consumer hand its tree to a parent process without a `-Tree` handle. |
+| `Export-PhaseTimingTreeIfRequested [-EnvVariableName]` | `Export-PhaseTimingTree` (guarded) | Self-guarding opt-in wrapper: reads the output-path env var (default `TIMING_TREE_OUTPUT_PATH`) and exports only when it is set; unset/empty or a never-initialised context is a no-op. Single-sources the env-var name so a child emitter makes one call instead of hand-writing `if ($env:...) { Export-PhaseTimingTree ... }`. |
 
 ```powershell
 Initialize-PhaseTimings -Phases @(
@@ -755,12 +759,10 @@ Invoke-WithPhaseTimer -Name 'Acquire' -Action { Start-VmAcquisition }
 Invoke-WithPhaseTimer -Name 'Post-provisioning' -Action {
     Invoke-WithSubStepTimer -Parent 'Post-provisioning' -Name 'cloud-init wait' -Action { Wait-CloudInit }
 }
-Write-PhaseTimingReport   # called from an outer finally so it prints on failure too
-if ($env:TIMING_TREE_OUTPUT_PATH) {
-    # Opt-in cross-process handoff: a parent (E2E) process imports and grafts
-    # this under the part that shelled out. Unset = console report only.
-    Export-PhaseTimingTree -Path $env:TIMING_TREE_OUTPUT_PATH
-}
+Write-PhaseTimingReport               # called from an outer finally so it prints on failure too
+Export-PhaseTimingTreeIfRequested     # opt-in cross-process handoff: exports only when
+                                      # TIMING_TREE_OUTPUT_PATH is set (a parent E2E process
+                                      # then imports and grafts it); unset = console report only
 ```
 
 ---
@@ -847,7 +849,8 @@ Common-PowerShell/
 |  |     |- Invoke-WithSubStepTimer.ps1      # 2-level compat shim
 |  |     |- Add-SubStepDuration.ps1          # 2-level compat shim
 |  |     |- Write-PhaseTimingReport.ps1      # 2-level compat shim (legacy report)
-|  |     `- Export-PhaseTimingTree.ps1       # 2-level compat shim (default-context JSON export)
+|  |     |- Export-PhaseTimingTree.ps1       # 2-level compat shim (default-context JSON export)
+|  |     `- Export-PhaseTimingTreeIfRequested.ps1  # 2-level compat shim (self-guarding opt-in export)
 |  |- Common.PowerShell.psm1        # Dot-sources Public\ (recursively); exports Public functions
 |  `- Common.PowerShell.psd1        # Module manifest (version, GUID, exports)
 |- Tests/                               # One .Tests.ps1 per Public\ fn, mirroring its layout (Retry\, ...)

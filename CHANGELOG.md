@@ -12,6 +12,22 @@ history and the tag list.
 
 ## [Unreleased]
 
+## [9.3.0] - 2026-07-07
+
+### Added
+- `Export-PhaseTimingTreeIfRequested` - the self-guarding opt-in wrapper over
+  `Export-PhaseTimingTree`. Reads the output-path environment variable (default
+  `TIMING_TREE_OUTPUT_PATH`, overridable via `-EnvVariableName`) and delegates
+  to `Export-PhaseTimingTree` only when it is set; unset/empty, or a
+  never-initialised default context, is a no-op. Centralises the env-var guard
+  every child emitter (`provision.ps1`, `create-users.ps1`, `remove-users.ps1`,
+  `register-runners.ps1`) previously hand-wrote at each export site, so the
+  opt-in contract name lives in exactly one place - a typo can no longer
+  silently disable a single consumer's export - and each call site collapses to
+  one intention-revealing call. The core `Export-TimingSpanTree` and its shim
+  `Export-PhaseTimingTree` stay mandatory on their path argument; the env-var
+  read lives only in this opt-in-aware layer.
+
 ## [9.2.0] - 2026-07-07
 
 ### Added
@@ -89,7 +105,8 @@ history and the tag list.
   `-RetryableExitCode` set, or throw and use `Invoke-WithRetry` for
   predicate-based classification.
 
-[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.2.0...HEAD
+[Unreleased]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.3.0...HEAD
+[9.3.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.2.0...9.3.0
 [9.2.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.1.0...9.2.0
 [9.1.0]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.1...9.1.0
 [9.0.1]: https://github.com/Klark-Morrigan/Common-PowerShell/compare/9.0.0...9.0.1
