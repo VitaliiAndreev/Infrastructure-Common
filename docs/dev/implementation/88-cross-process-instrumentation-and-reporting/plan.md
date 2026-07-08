@@ -26,8 +26,11 @@ ordered, committable steps only. Steps do not repeat context already in
   - [D2-B. Self-guarding opt-in export shim + consumer adoption (Common.PowerShell)](#d2-b-self-guarding-opt-in-export-shim--consumer-adoption-commonpowershell)
   - [D2-C. Extract the whole user-reconcile orchestration (Vm-Users)](#d2-c-extract-the-whole-user-reconcile-orchestration-vm-users)
   - [D3. Instrument + export register/deregister-runners.ps1 (GitHubRunners)](#d3-instrument--export-registerderegister-runnersps1-githubrunners)
+  - [D3-B. Extract the shared runner-reconcile front matter (GitHubRunners)](#d3-b-extract-the-shared-runner-reconcile-front-matter-githubrunners)
 - [Section E - Bash depth tier (last)](#section-e---bash-depth-tier-last)
   - [E1. Bash timing emitter + wire into the bash flows](#e1-bash-timing-emitter--wire-into-the-bash-flows)
+  - [E2. Toolchains ansible shell-out gets its own child span (Infrastructure-E2E)](#e2-toolchains-ansible-shell-out-gets-its-own-child-span-infrastructure-e2e)
+  - [E3. Bridge the opt-in across the WSL boundary (Infrastructure-E2E)](#e3-bridge-the-opt-in-across-the-wsl-boundary-infrastructure-e2e)
 - [Cross-process data flow (whole feature)](#cross-process-data-flow-whole-feature)
 
 ## Conventions
@@ -666,6 +669,70 @@ flowchart TD
   reg -->|opt-in| json["tree.json"]
 ```
 
+### D3-B. Extract the shared runner-reconcile front matter (GitHubRunners)
+
+**What.** After D3, `register-runners.ps1` and `deregister-runners.ps1` share
+their whole opening as near-verbatim copies - the two vault reads, the feature-53
+router resolution, the phase-timing declaration, and the
+`Export-PhaseTimingTreeIfRequested` finally - while diverging in the middle
+(register: prefetch + install over a host file server; deregister: remove, with a
+force-mode GitHub-API path for unreachable VMs). Lift the shared opening and the
+timing envelope into a shared orchestrator `Invoke-RunnerReconcileRun` under
+`registration/common/`, taking `-SecretSuffix`, `-OperationPhase` (the operation
+stages that follow the shared one), and a `-Body` scriptblock (the divergent
+middle, invoked with the router-stamped runner entries and the deploy passwords).
+The orchestrator owns `Initialize-PhaseTimings` (the shared
+`Read configs + resolve router IP` stage prepended to the caller's operation
+phases), the timed shared stage itself, and the `finally`
+`Export-PhaseTimingTreeIfRequested`. Each entry script collapses to its bootstrap
+and one call passing its operation phases plus a `-Body` that wraps its stages in
+`Invoke-WithPhaseTimer`.
+
+Unlike D2-C's `-PerVmAction` seam, this is a coarser `-Body` seam: the two runner
+directions diverge across their entire back half (register threads a host file
+server + base URL through the per-VM loop; deregister branches
+reachable/unreachable/force with no session for unreachable VMs), so only the
+opening and the timing envelope are genuinely shared - not a per-VM call.
+
+**Why.** SSOT: two verbatim copies of a two-vault read + router-resolution flow
+drift silently ([constraints](problem.md#constraints-and-non-goals): one
+framework, not parallel copies). D3's timing scaffolding widened the copied
+region until duplication was the dominant cost of both files. Extraction also
+creates a mockable function seam: the entry scripts are AST-only tested (their
+top-level side effects cannot be dot-sourced), but the orchestrator CAN be
+dot-sourced with `Read-GitHubRunnersConfig` / `Read-VmDeployPasswords` /
+`Get-InfrastructureSecret` / `Get-VmKvpIpAddress` mocked, so the shared flow gains
+real behavioural coverage instead of structural checks. Symmetric with
+`Invoke-VmUserReconcileRun` (D2-C) in Infrastructure-Vm-Users; the router block is
+now one copy per repo rather than one per entry script. Sequenced after D3, which
+introduced the timing scaffolding it consolidates.
+
+**Tests** (`Infrastructure-GitHubRunners`, unit): a new behavioural suite for the
+orchestrator, dot-sourcing it with the vault/KVP boundary mocked -
+suffix-stamped vault reads, the shared-then-operation phase declaration order,
+router-stamp vs no-router topology, `-Body` invoked with the resolved context,
+and the `finally` invoking `Export-PhaseTimingTreeIfRequested` on the success AND
+failure paths (the env-var opt-in itself stays owned by D2-B's Common.PowerShell
+tests). The register/deregister AST suites shrink to what the thin entry scripts
+own: a single `Invoke-RunnerReconcileRun` call carrying the suffix and the
+direction's operation phases, a `-Body` timing exactly those phases and wired to
+the up/down verbs, no leaked shared-opening behaviour (no direct vault reads, no
+router discovery, no bare `VmProvisionerConfig` literal, no own timing setup), and
+the raised `Common.PowerShell` floor.
+
+```mermaid
+flowchart TD
+  subgraph shared["registration/common (shared orchestrator)"]
+    h["Invoke-RunnerReconcileRun<br/>-SecretSuffix -OperationPhase -Body"]
+    h --> init["Initialize-PhaseTimings (shared stage + operation phases)"]
+    init --> s1["time: read configs + resolve router IP"]
+    s1 --> body["& Body(runnerEntries, deployPasswords)"]
+    body --> fin["finally: Export-PhaseTimingTreeIfRequested (D2-B shim)"]
+  end
+  reg["register-runners.ps1 (thin)"] -->|"-Body { probe -> prefetch -> install }"| h
+  dereg["deregister-runners.ps1 (thin)"] -->|"-Body { probe -> deregister }"| h
+```
+
 ## Section E - Bash depth tier (last)
 
 ### E1. Bash timing emitter + wire into the bash flows
@@ -688,6 +755,92 @@ flowchart TD
   sh["register-runners.sh"] --> emit["timing.sh: span begin/end"]
   emit --> json["tree.json (schema v1)"]
   json -->|imported by C2| e2e["E2E part subtree"]
+```
+
+### E2. Toolchains ansible shell-out gets its own child span (Infrastructure-E2E)
+
+**What.** The E2E `provisioning Phase 1` part (a
+`Measure-ChildProcessTimingSpan` in `Invoke-VmUsersTest`) runs two children
+that both honour the `TIMING_TREE_OUTPUT_PATH` opt-in: the baseline
+`provision.ps1` (D1-B) and, under `ToolchainsFlow=ansible`, the bash
+`provision-toolchains.sh` (E1). They share the part's single output path, so
+the second writer overwrites the first. Thread the run's timing context into
+`Invoke-VmProvisioningPhase1` and wrap its `Set-VmToolchainsForTest` call in a
+nested `Measure-ChildProcessTimingSpan` (e.g. `provision toolchains`), giving
+the toolchains child its own per-invocation path that grafts as a sub-span
+under `provisioning Phase 1`. Audit the Phase 2 / 3 `Set-VmToolchainsForTest`
+sites and apply the same wrap to any that run under a timed part beside a
+co-resident exporting child.
+
+Inert until E3: the bash variable still does not cross into WSL, so
+`provision-toolchains.sh` exports nothing yet and the new `provision toolchains`
+span renders with no children - a harmless structural addition that readies the
+part for the bash subtree the moment E3 lands.
+
+**Why.** `Measure-ChildProcessTimingSpan` models one exporting child per part
+(one temp path). A part hosting two exporting children needs a distinct path per
+child or one silently clobbers the other. Sequenced before the boundary bridge
+(E3) so the split is in place before the bash export can reach the shared path -
+no step ever ships the clobber.
+
+**Tests** (`Infrastructure-E2E`, unit): a mocked `provisioning Phase 1` where
+both `provision.ps1` and the toolchains shell-out write a stub tree yields
+`provisioning Phase 1 -> { provision.ps1 spans } + { provision toolchains ->
+toolchains spans }` with neither subtree lost; `ToolchainsFlow=custom-powershell`
+(no bash child) leaves `provision toolchains` absent/empty and provision.ps1's
+tree intact; the nested wrap restores the outer part's output path on both the
+success and failure paths.
+
+```mermaid
+flowchart TD
+  subgraph part["provisioning Phase 1 (outer path P1)"]
+    prov["provision.ps1 (pwsh)"] -->|exports P1| P1["tree P1"]
+    subgraph inner["provision toolchains (nested path P2)"]
+      tc["provision-toolchains.sh (bash)"] -->|exports P2| P2["tree P2"]
+    end
+  end
+  P1 -->|graft| partNode["Phase 1 children"]
+  P2 -->|graft| tcNode["provision toolchains children"]
+  tcNode --> partNode
+```
+
+### E3. Bridge the opt-in across the WSL boundary (Infrastructure-E2E)
+
+**What.** In `Measure-ChildProcessTimingSpan`, where it already sets and later
+restores `$env:TIMING_TREE_OUTPUT_PATH`, also ensure `$env:WSLENV` carries
+`TIMING_TREE_OUTPUT_PATH/p` for the duration of the action (append if absent,
+guarded like the existing `GH_TOKEN/u` forwarding), saving the prior `WSLENV`
+and restoring it in the same `finally`. The `/p` flag path-translates the
+Windows temp path (`GetTempPath`, under `C:`) to `/mnt/c/...`, so the bash child
+writes the same file the parent then imports. When the opt-in is unset nothing
+is added, so a normal run is unchanged.
+
+**Why.** A Windows environment variable is invisible inside `wsl -- ...` unless
+named in `WSLENV`, and a path value is unusable there without `/p`
+([cross-process handoff](problem.md#resolved-decisions)). This is the missing
+link that makes the E1 emitters actually reach: `register-runners.sh` and
+`create-users.sh` (single-child parts) begin exporting into the graft
+immediately, and `provision-toolchains.sh` lands in the E2-provided sub-span.
+Doing the forwarding once, in the wrapper that owns the opt-in variable, keeps
+the contract single-sourced and covers every bash child - present and future -
+with no per-shell-out edits.
+
+**Tests** (`Infrastructure-E2E`, unit): during the wrapped action
+`$env:WSLENV` contains `TIMING_TREE_OUTPUT_PATH/p`; afterwards `WSLENV` is
+restored to its prior value (removed when it did not exist before); a nested
+wrap does not duplicate the entry; a stubbed child that writes a tree to the
+path imports and grafts; the unset-opt-in path adds nothing to `WSLENV`.
+
+```mermaid
+sequenceDiagram
+  participant W as Measure-ChildProcessTimingSpan
+  participant Env as $env (TIMING_TREE_OUTPUT_PATH + WSLENV)
+  participant Child as wsl -- ops/*.sh
+  W->>Env: set path + append TIMING_TREE_OUTPUT_PATH/p to WSLENV
+  W->>Child: run action
+  Child->>Env: read /mnt/c path, export tree
+  W->>W: import + graft subtree
+  W->>Env: restore WSLENV + prior path (finally)
 ```
 
 ## Cross-process data flow (whole feature)

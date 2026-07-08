@@ -176,3 +176,15 @@ scope here.
   console report - today's behaviour, byte for byte. This keeps the
   library topology-agnostic and the production scripts test-agnostic (no
   script knows it is being driven by E2E).
+- **The bash opt-in crosses the WSL boundary centrally.** The E2E
+  orchestrator sets the opt-in in the Windows process, but the bash flows run
+  under `wsl -- ...`, where a Windows environment variable is invisible unless
+  named in `WSLENV` - and a path value needs the `/p` translation flag
+  (`C:\...` -> `/mnt/c/...`). This forwarding is done once, inside the
+  child-process timing wrapper that already owns the opt-in variable, so every
+  current and future bash child inherits it with no per-shell-out edits. Since
+  a single part that hosts two exporting children (baseline `provision.ps1`
+  plus the ansible `provision-toolchains.sh`) would otherwise clobber one
+  shared output path, the ansible toolchains shell-out first gets its own
+  nested child span with a distinct path, landing before the boundary bridge
+  so no step ships a clobber.
