@@ -136,6 +136,21 @@ jobs:
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
 
+      # First step that runs a shell, and deliberately the only one that
+      # is not `shell: pwsh`. Every composite below needs the interpreter,
+      # so a runner without it fails at whichever composite runs first with
+      # a bare `pwsh: command not found` - an error naming no cause. No
+      # PowerShell-written preflight can cover this case, because it would
+      # not run either. Ungated on the runner environment: GitHub-hosted
+      # images ship pwsh, so the check is a fast no-op there rather than a
+      # branch to maintain.
+      - name: assert-pwsh (self)
+        if: github.repository == 'Klark-Morrigan/Common-PowerShell'
+        uses: ./.github/actions/assert-pwsh
+      - name: assert-pwsh (consumer)
+        if: github.repository != 'Klark-Morrigan/Common-PowerShell'
+        uses: ./.powershell-common/.github/actions/assert-pwsh
+
       # All three lints run BEFORE the unit tests: they are static,
       # sub-second checks, so failing fast on them spares the cost of the
       # slower behavioural run when a PR has a trivial syntax or shape
@@ -248,6 +263,19 @@ jobs:
           path: .powershell-common
           sparse-checkout: .github/actions
           sparse-checkout-cone-mode: false
+
+      # Same bootstrap check as the unit job - see its comment for why it
+      # is bash and why it comes first. It matters more here: this job's
+      # default runner is Linux, where pwsh is an installed package rather
+      # than part of the image the way it is on windows-latest, so a
+      # self-hosted Linux override is the likeliest place in this family to
+      # meet a runner without it.
+      - name: assert-pwsh (self)
+        if: github.repository == 'Klark-Morrigan/Common-PowerShell'
+        uses: ./.github/actions/assert-pwsh
+      - name: assert-pwsh (consumer)
+        if: github.repository != 'Klark-Morrigan/Common-PowerShell'
+        uses: ./.powershell-common/.github/actions/assert-pwsh
 
       # Scan both Docker test shapes first; their has-tests outputs gate
       # every run/build step below so a repo without a given shape pays

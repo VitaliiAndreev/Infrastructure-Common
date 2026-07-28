@@ -782,6 +782,23 @@ sibling repos call them via `workflow_call` and `uses:` references to
 | `tag.yml` | Creates a git tag from the manifest version |
 | `publish.yml` | Publishes a module directory to PSGallery |
 
+One composite is consumed **outside** those workflows and is worth calling
+out, because its audience is wider than this repo's own domain:
+
+| Composite | Purpose |
+|---|---|
+| `assert-pwsh` | Fails fast with an actionable message when `pwsh` is not on PATH. The bootstrap check for any workflow in this family whose steps run `shell: pwsh` |
+
+`assert-pwsh` is the one bash-shelled action here, and deliberately so: when
+the missing thing *is* the interpreter, no PowerShell-written preflight can
+run to report it, and the operator sees only a bare `pwsh: command not
+found` from whichever composite executed first. It runs as the first step of
+both `ci-powershell.yml` jobs, and Common-DotNet's `ci-dotnet.yml` stages
+this repo to call it too - every step in that workflow is `shell: pwsh`, so
+it has the same prerequisite despite not being a PowerShell repo. The check
+lives here rather than in each consumer because the prerequisite is
+identical everywhere and the value is in the message, not the test.
+
 This repo also *consumes* Common-Automation's reusable lint workflows for its
 own YAML and bash surfaces, the same way sibling repos consume the table above:
 
@@ -868,30 +885,31 @@ Common-PowerShell/
 |  `- Integration.DockerHost/           # Integration tests - run in Docker only
 |- .github/
 |  |- actions/                          # Reusable composite actions (canonical)
-|  |  |- Helpers.ps1                    # Shared PS helpers dot-sourced by action scripts
+|  |  |- assert-pwsh/                      # Bash preflight: fails fast when pwsh is absent (also consumed by Common-DotNet's ci-dotnet.yml)
 |  |  |- check-version-is-new/
-|  |  |- tag-from-manifest/
-|  |  |- run-unit-tests/                 # Unit test runner (canonical)
-|  |  |  |- Run-Tests.ps1                #   Entry point: dispatch + optional self-logging
-|  |  |  |- Module.Tests.ps1             #   Shared module-registration test (injected)
-|  |  |  `- lib/                         #   Helpers, one per file, dot-sourced
-|  |  |     |- Get-UnitTestFiles.ps1     #     Discovers unit test files (excludes Docker dirs)
-|  |  |     |- Invoke-UnitTestRun.ps1    #     Installs Pester, runs discovered tests
-|  |  |     `- Limit-TestLogRetention.ps1 #   Prunes old logs via Limit-RetainedItem
+|  |  |- lint-no-bare-return-empty-array/  # Regex lint: bans bare `return @()` (invoked by ci-powershell.yml)
+|  |  |- lint-powershell-parses/           # Syntax gate: parses every .ps1/.psm1/.psd1 via the PS parser
+|  |  |- lint-powershell-psscriptanalyzer/ # PSScriptAnalyzer gate: full rule set (settings .psd1 = rule SSOT)
+|  |  |- publish/
+|  |  |- run-unit-tests/                   # Unit test runner (canonical)
+|  |  |  |- Run-Tests.ps1                     #   Entry point: dispatch + optional self-logging
+|  |  |  |- Module.Tests.ps1                  #   Shared module-registration test (injected)
+|  |  |  `- lib/                              #   Helpers, one per file, dot-sourced
+|  |  |     |- Get-UnitTestFiles.ps1             #     Discovers unit test files (excludes Docker dirs)
+|  |  |     |- Invoke-UnitTestRun.ps1            #     Installs Pester, runs discovered tests
+|  |  |     `- Limit-TestLogRetention.ps1        #   Prunes old logs via Limit-RetainedItem
 |  |  |- run-integration-tests/
 |  |  |- run-ssh-integration-tests/
 |  |  |- scan-integration-tests/
-|  |  |- lint-no-bare-return-empty-array/  # Regex lint: bans bare `return @()` (invoked by ci-powershell.yml)
-|  |  |- lint-powershell-parses/            # Syntax gate: parses every .ps1/.psm1/.psd1 via the PS parser
-|  |  |- lint-powershell-psscriptanalyzer/  # PSScriptAnalyzer gate: full rule set (settings .psd1 = rule SSOT)
-|  |  `- publish/
-|  `- workflows/                        # Reusable workflows (canonical)
-|     |- ci-powershell.yml              # unit + integration (Docker) jobs; integration needs unit
+|  |  |- tag-from-manifest/
+|  |  `- Helpers.ps1                      # Shared PS helpers dot-sourced by action scripts
+|  `- workflows/                       # Reusable workflows (canonical)
+|     |- ci-powershell.yml                # unit + integration (Docker) jobs; integration needs unit
 |     |- tag.yml
 |     |- publish.yml
 |     |- release.yml
-|     |- ci-bash.yml                     #   Consumer wrapper -> Common-Automation ci-bash (shellchecks scripts\ shims)
-|     `- ci-yaml.yml                     #   Consumer wrapper -> Common-Automation ci-yaml (actionlint/yamllint/...)
+|     |- ci-bash.yml                      #   Consumer wrapper -> Common-Automation ci-bash (shellchecks scripts\ shims)
+|     `- ci-yaml.yml                      #   Consumer wrapper -> Common-Automation ci-yaml (actionlint/yamllint/...)
 |- docs/
 |  `- dev/
 |     `- implementation/                # Per-feature problem.md + plan.md
