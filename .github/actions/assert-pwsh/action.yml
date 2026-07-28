@@ -1,0 +1,39 @@
+name: Assert PowerShell is present
+description: >
+  Preflight that fails fast with an actionable message if `pwsh` is not on
+  PATH. It is the bootstrap check for every workflow in this family whose
+  steps run with `shell: pwsh`: when the interpreter itself is what is
+  missing, no PowerShell-written preflight can run to report it, so the
+  failure surfaces as a bare `pwsh: command not found` from whichever
+  composite happens to execute first - an error that names no cause and
+  points nowhere. Hence a bash step, deliberately, and hence its position
+  as the first step in a job.
+
+  It lives here rather than in each consuming repo because the
+  prerequisite is the same everywhere and the value is in the message,
+  not the test. Consumers reach it the same way they reach the other
+  composites: `./.powershell-common/.github/actions/assert-pwsh` after
+  staging this repo, or the local `./` path from inside it.
+
+  On self-hosted, PowerShell is expected to be baked into the runner
+  image; the message points at the runner image so the fix lands there,
+  not ad hoc on the host - the same posture as the .NET toolchain
+  asserts in Common-DotNet.
+
+runs:
+  using: composite
+  steps:
+    - name: Assert pwsh
+      # bash, NOT pwsh - see the description. Every GitHub-hosted runner
+      # image ships bash, and a self-hosted Linux runner has it by
+      # definition, so this step can always run to deliver the diagnosis.
+      # On a self-hosted WINDOWS runner without Git Bash this step cannot
+      # run either - but there `pwsh` is effectively a given, and the
+      # actions/runner install itself carries a shell.
+      shell: bash
+      # ${{ github.action_path }} resolves to the runner-local copy of
+      # this action's directory. Invoking the colocated script via that
+      # path keeps action body + scripts SHA-pinned together, matching
+      # every other composite in this repo.
+      run: |
+        "${{ github.action_path }}/assert-pwsh.sh"
